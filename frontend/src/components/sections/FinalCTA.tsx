@@ -5,6 +5,7 @@ import { DataBackdrop } from "../ui/DataBackdrop";
 import { emitMascot } from "@/lib/mascotBus";
 import { content, Language } from "@/data/content";
 import { APP_URL } from "@/data/links";
+import { useTryNow } from "@/lib/tryNow";
 
 interface FinalCTAProps {
   lang: Language;
@@ -16,6 +17,7 @@ interface FinalCTAProps {
  */
 export const FinalCTA: React.FC<FinalCTAProps> = ({ lang }) => {
   const t = content[lang].finalCta;
+  const tryNow = useTryNow(APP_URL);
 
   return (
     <section
@@ -34,6 +36,7 @@ export const FinalCTA: React.FC<FinalCTAProps> = ({ lang }) => {
           <div className="flex flex-wrap items-center gap-4 mb-12">
             <a
               href={APP_URL}
+              onClick={tryNow}
               onMouseEnter={() =>
                 emitMascot({
                   section: "mulai",

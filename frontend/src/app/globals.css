@@ -440,3 +440,44 @@
 @media (prefers-reduced-motion: reduce) {
   .auth-rise, .auth-card-in, .auth-shake, .auth-shake-big, .auth-pop { animation: none; }
 }
+
+/* ---------- Tersedot ke tombol Coba Sekarang dan mendarat di halaman masuk ---------- */
+@keyframes mw-portal {
+  0%   { transform: scale(0); }
+  18%  { transform: scale(1.2); }
+  85%  { transform: scale(1); }
+  100% { transform: scale(0); }
+}
+@keyframes mw-suck-target {
+  0%, 100% { transform: translate(0, 0) scale(1); box-shadow: 0 0 0 0 #EBEB00; }
+  25%      { transform: translate(-2px, 1px) scale(1.04); box-shadow: 0 0 0 4px #EBEB00, 0 0 0 7px #000; }
+  75%      { transform: translate(2px, -1px) scale(1.04); box-shadow: 0 0 0 4px #EBEB00, 0 0 0 7px #000; }
+}
+.mw-suck-target {
+  animation: mw-suck-target 320ms steps(4) infinite;
+  position: relative;
+  z-index: 55;
+  background-color: #000000 !important;
+  color: #FFFFFF !important;
+  border-color: #EBEB00 !important;
+}
+@keyframes auth-land {
+  0%   { transform: translateY(-115vh) rotate(0deg); animation-timing-function: cubic-bezier(0.45, 0, 0.9, 0.55); }
+  66%  { transform: translateY(0) rotate(720deg) scale(1, 1); animation-timing-function: linear; }
+  72%  { transform: translateY(0) rotate(720deg) scale(1.28, 0.62); animation-timing-function: ease-out; }
+  84%  { transform: translateY(-30px) rotate(720deg) scale(0.92, 1.1); animation-timing-function: ease-in; }
+  100% { transform: translateY(0) rotate(720deg) scale(1, 1); }
+}
+.auth-land {
+  transform-origin: 50% 80%;
+  animation: auth-land 1100ms linear var(--land-delay, 0ms) both;
+}
+@keyframes auth-dust {
+  0%   { transform: translate(0, 0) scale(0.4); opacity: 0; }
+  15%  { opacity: 0.9; }
+  100% { transform: translate(var(--dx), var(--dy)) scale(1.4); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-land { animation: none; }
+  .mw-suck-target { animation: none; }
+}

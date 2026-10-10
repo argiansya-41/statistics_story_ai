@@ -4,8 +4,9 @@ import React from "react";
 import { GenerativeCanvas } from "../ui/GenerativeCanvas";
 import { GlitchBars } from "../ui/GlitchBars";
 import { emitMascot } from "@/lib/mascotBus";
-import { content, Language } from "@/data/content";
+import { useTryNow } from "@/lib/tryNow";
 import { APP_URL } from "@/data/links";
+import { content, Language } from "@/data/content";
 
 interface HeroProps {
   lang: Language;
@@ -13,6 +14,7 @@ interface HeroProps {
 
 export const Hero: React.FC<HeroProps> = ({ lang }) => {
   const t = content[lang].hero;
+  const tryNow = useTryNow(APP_URL);
 
   const croppedGridStyle: React.CSSProperties = {
     backgroundSize: "34px 34px",
@@ -82,6 +84,7 @@ export const Hero: React.FC<HeroProps> = ({ lang }) => {
           <div className="flex flex-wrap items-center gap-4">
             <a
               href={APP_URL}
+              onClick={tryNow}
               onMouseEnter={() =>
                 emitMascot({
                   section: "hero",

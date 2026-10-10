@@ -30,11 +30,13 @@ const LOOKS: Record<StageKey, [Look, Look, Look]> = {
   error: [{ pose: "idle", face: "hurt" }, { pose: "idle", face: "sad" }, { pose: "idle", face: "hurt" }],
   success: [{ pose: "cheer", face: "happy" }, { pose: "cheer", face: "love" }, { pose: "cheer", face: "happy" }],
   switching: [{ pose: "cheer", face: "wow" }, { pose: "cheer", face: "wow" }, { pose: "cheer", face: "wow" }],
+  landing: [{ pose: "air", face: "wow" }, { pose: "air", face: "hurt" }, { pose: "air", face: "wow" }],
+  dizzy: [{ pose: "idle", face: "ko" }, { pose: "idle", face: "ko" }, { pose: "idle", face: "ko" }],
 };
 
 /** Maskot yang berbicara (indeks 0 = Sigi, 1 = Mu, 2 = Quin) pada tiap keadaan. */
 const SPEAKER: Record<StageKey, 0 | 1 | 2> = {
-  idle: 0, email: 2, name: 1, role: 0, password: 1, peek: 2, weak: 0, strong: 1, submitting: 2, error: 0, success: 1, switching: 0,
+  idle: 0, email: 2, name: 1, role: 0, password: 1, peek: 2, weak: 0, strong: 1, submitting: 2, error: 0, success: 1, switching: 0, landing: 0, dizzy: 1,
 };
 
 const CHARACTERS: MascotCharacter[] = ["sigi", "mu", "quin"];
@@ -46,6 +48,29 @@ const HEADLINE_STYLE: Record<Mode, { bg: string; fg: string }> = {
   forgot: { bg: "#FFFFFF", fg: "#000000" },
 };
 
+/** Debu yang terlempar saat maskot menghantam lantai. */
+const DUST = [[-34, -10], [-22, -26], [-8, -34], [8, -34], [22, -26], [34, -10]];
+const LandingDust: React.FC<{ delay: number }> = ({ delay }) => (
+  <div aria-hidden="true" className="pointer-events-none absolute bottom-0 left-1/2 z-10 h-0 w-0">
+    {DUST.map(([dx, dy], k) => (
+      <span
+        key={k}
+        className="absolute -left-1 bottom-0 block h-2 w-2 bg-white/80"
+        style={{ ["--dx" as string]: `${dx}px`, ["--dy" as string]: `${dy}px`, animation: `auth-dust 520ms steps(6) ${delay}ms both` }}
+      />
+    ))}
+  </div>
+);
+
+/** Bintang berputar di atas kepala maskot yang pusing. */
+const DizzyStars: React.FC = () => (
+  <div aria-hidden="true" className="pointer-events-none absolute -top-1 left-1/2 z-10 -ml-6 h-12 w-12" style={{ animation: "mw-spin 1.1s steps(8) infinite" }}>
+    {[{ left: 20, top: 0 }, { left: 3, top: 28 }, { left: 36, top: 28 }].map((pos, i) => (
+      <span key={i} className="absolute block h-2.5 w-2.5 bg-[#EBEB00] outline outline-1 outline-black" style={pos} />
+    ))}
+  </div>
+);
+
 interface AuthStageProps {
   mode: Mode;
   copy: AuthCopy;
@@ -55,9 +80,11 @@ interface AuthStageProps {
   shakeKey: number;
   hopKey: number;
   lang: "id" | "en";
+  /** Fase kedatangan: maskot jatuh dari atas, pusing, lalu pulih. */
+  arrival: "fall" | "dizzy" | "done";
 }
 
-export const AuthStage: React.FC<AuthStageProps> = ({ mode, copy, stage, bubble, celebrate, shakeKey, hopKey }) => {
+export const AuthStage: React.FC<AuthStageProps> = ({ mode, copy, stage, bubble, celebrate, shakeKey, hopKey, arrival }) => {
   const m = copy.modes[mode];
   const hs = HEADLINE_STYLE[mode];
   const looks = LOOKS[stage];
@@ -127,7 +154,19 @@ export const AuthStage: React.FC<AuthStageProps> = ({ mode, copy, stage, bubble,
                   />
                 </div>
               )}
-              <div key={`hop-${hopKey}`} style={hopKey > 0 ? { animation: "mw-hop 450ms steps(1, end) 1" } : undefined}>
+              {arrival === "fall" && <LandingDust delay={i * 240 + 780} />}
+              {arrival === "dizzy" && <DizzyStars />}
+              <div
+                key={`hop-${hopKey}`}
+                className={arrival === "fall" ? "auth-land" : undefined}
+                style={
+                  arrival === "fall"
+                    ? ({ ["--land-delay" as string]: `${i * 240}ms` } as React.CSSProperties)
+                    : hopKey > 0
+                      ? { animation: "mw-hop 450ms steps(1, end) 1" }
+                      : undefined
+                }
+              >
                 <Mascot
                   character={CHARACTERS[i]}
                   pose={look.pose}

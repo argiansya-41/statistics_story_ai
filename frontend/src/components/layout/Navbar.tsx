@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { HistogramGlyph } from "../ui/HistogramGlyph";
+import { useTryNow } from "@/lib/tryNow";
 import { content, Language } from "@/data/content";
 import { APP_URL } from "@/data/links";
 
@@ -15,12 +16,10 @@ export const Navbar: React.FC<NavbarProps> = ({ lang, onToggleLang }) => {
   const [navTheme, setNavTheme] = useState<"light" | "dark">("light");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const t = content[lang].nav;
+  const tryNow = useTryNow(APP_URL);
 
   useEffect(() => {
-    let lastScroll = 0;
-
     const handleScroll = () => {
-      const currentScroll = window.scrollY;
 
       // Keep navbar fixed and visible at the top to showcase scroll inversion across sections
 
@@ -175,6 +174,7 @@ export const Navbar: React.FC<NavbarProps> = ({ lang, onToggleLang }) => {
               <div className="hidden sm:flex items-center px-4 md:px-6">
                 <a
                   href={APP_URL}
+                  onClick={tryNow}
                   className="group relative inline-flex items-center gap-2 px-5 py-2.5 bg-[#EBEB00] text-black font-mono-tech text-xs font-bold tracking-widest border border-black hover:bg-black hover:text-white transition-colors duration-150 select-none"
                 >
                   <span>{t.cta}</span>
@@ -233,6 +233,7 @@ export const Navbar: React.FC<NavbarProps> = ({ lang, onToggleLang }) => {
           </a>
           <a
             href={APP_URL}
+            onClick={tryNow}
             className="w-full text-center py-4 bg-[#EBEB00] text-black font-mono-tech text-sm font-bold tracking-widest border border-black hover:bg-white transition-colors"
           >
             {t.cta} →

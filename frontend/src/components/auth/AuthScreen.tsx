@@ -43,6 +43,7 @@ export const AuthScreen: React.FC<{ initialMode: Mode }> = ({ initialMode }) => 
   const [switching, setSwitching] = useState(false);
   const [shakeKey, setShakeKey] = useState(0);
   const [hopKey, setHopKey] = useState(0);
+  const [arrival, setArrival] = useState<"fall" | "dizzy" | "done">("fall");
 
   const wipe = useRef<PixelWipeHandle>(null);
   const busy = useRef(false);
@@ -56,7 +57,9 @@ export const AuthScreen: React.FC<{ initialMode: Mode }> = ({ initialMode }) => 
 
   // ---------- Keadaan panggung maskot ----------
   let stage: StageKey = "idle";
-  if (switching) stage = "switching";
+  if (arrival === "fall") stage = "landing";
+  else if (arrival === "dizzy") stage = "dizzy";
+  else if (switching) stage = "switching";
   else if (status === "success") stage = "success";
   else if (status === "submitting") stage = "submitting";
   else if (status === "error") stage = "error";
@@ -69,6 +72,18 @@ export const AuthScreen: React.FC<{ initialMode: Mode }> = ({ initialMode }) => 
   else if (stage === "success") bubble = copy.stage.successByMode[mode];
   else if (stage === "error") bubble = formError ? copy.errors[formError] : copy.stage.error;
   else if (stage !== "switching") bubble = copy.stage[stage];
+  if (stage === "landing" || stage === "dizzy") bubble = copy.stage[stage];
+
+  // Kedatangan: maskot jatuh dari atas (dari tombol Coba Sekarang), pusing sebentar, lalu pulih.
+  useEffect(() => {
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const t1 = window.setTimeout(() => setArrival("dizzy"), reduced ? 0 : 1800);
+    const t2 = window.setTimeout(() => setArrival("done"), reduced ? 0 : 3700);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, []);
 
   // Alihkan otomatis setelah berhasil, hanya bila server nyata terhubung dan alamat aplikasi diisi.
   useEffect(() => {
@@ -169,6 +184,7 @@ export const AuthScreen: React.FC<{ initialMode: Mode }> = ({ initialMode }) => 
         shakeKey={shakeKey}
         hopKey={hopKey}
         lang={lang}
+        arrival={arrival}
       />
 
       <section className="relative flex min-h-screen flex-col bg-[#F4F4F4] text-black bg-blueprint-grid">

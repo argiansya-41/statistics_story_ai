@@ -1,12 +1,16 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useRouter } from "next/navigation";
 import type { Language } from "@/data/content";
 import { Mascot } from "@/components/ui/Mascot";
+import type { MascotFace } from "@/components/ui/Mascot";
 import { ACTOR_IDS, DEFAULT_LOOK, ELEMENT, createEngine } from "@/lib/mascotEngine";
 import type { ActorId, BeamUi, BurstUi, Element as ElementKind, Engine, Fx, ProjectileUi, UiState } from "@/lib/mascotEngine";
 import { SCRIPTS } from "@/data/mascotScripts";
 import { MASCOT_EVENT } from "@/lib/mascotBus";
+import { MASCOT_SUCK_EVENT } from "@/lib/tryNow";
+import type { SuckDetail } from "@/lib/tryNow";
 import type { MascotEventDetail } from "@/lib/mascotBus";
 import { ACTOR_FX, BURSTS, COLUMNS, PROJECTILES, isRadial } from "./mascotSprites";
 import type { Sprite } from "./mascotSprites";
@@ -238,7 +242,48 @@ const INITIAL_UI: UiState = {
 
 const FINALE_SECTIONS = new Set(["early-access", "mulai", "footer"]);
 
-interface ActorEls { wrap: HTMLDivElement | null; lift: HTMLDivElement | null; shadow: HTMLDivElement | null }
+interface ActorEls {
+  wrap: HTMLDivElement | null;
+  lift: HTMLDivElement | null;
+  shadow: HTMLDivElement | null;
+  spin: HTMLDivElement | null;
+}
+
+// ---------- Animasi "tersedot" saat tombol Coba Sekarang ditekan ----------
+const SUCK_MS = 1600;
+const SUCK_FACES: Record<ActorId, MascotFace[]> = {
+  sigi: ["wow", "hurt", "ko", "ko"],
+  mu: ["hurt", "ko", "wow", "wow"],
+  quin: ["wow", "ko", "hurt", "ko"],
+};
+const SUCK_LINES: { actor: ActorId; id: string; en: string }[] = [
+  { actor: "sigi", id: "Eh? Eh? EH?!", en: "Huh? Huh? HUH?!" },
+  { actor: "mu", id: "Tersedot ke tombol!", en: "Sucked into the button!" },
+  { actor: "quin", id: "Wuaaaaa~", en: "Whooooa~" },
+];
+interface SuckLook { face: MascotFace; bubble: string | null }
+type SuckUi = Record<ActorId, SuckLook>;
+
+/** Lubang hitam kecil di tombol: inti hitam, cincin kotak berputar. */
+const SuckPortal: React.FC<{ x: number; y: number }> = ({ x, y }) => (
+  <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-[70]">
+    <div className="absolute" style={{ left: x, top: y, animation: `mw-portal ${SUCK_MS + 200}ms steps(10) both` }}>
+      <div className="absolute -left-4 -top-4 h-8 w-8 bg-black outline outline-2 outline-[#EBEB00]" />
+      <div className="absolute left-0 top-0" style={{ animation: "mw-spin 0.9s steps(8) infinite" }}>
+        {[0, 1, 2, 3, 4, 5, 6, 7].map((k) => (
+          <span
+            key={k}
+            className="absolute -left-1.5 -top-1.5 block h-3 w-3"
+            style={{
+              background: ["#FF2E2E", "#EBEB00", "#003BFF", "#FFFFFF"][k % 4],
+              transform: `rotate(${k * 45}deg) translateY(-28px)`,
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  </div>
+);
 
 export const MascotWorld: React.FC<{ lang: Language }> = ({ lang }) => {
   const isClient = useSyncExternalStore(noopSubscribe, () => true, () => false);
@@ -248,17 +293,22 @@ export const MascotWorld: React.FC<{ lang: Language }> = ({ lang }) => {
   const available = isClient && !reduced && !small;
   const active = available && enabled;
 
+  const router = useRouter();
+  const routerRef = useRef(router);
   const [ui, setUi] = useState<UiState>(INITIAL_UI);
+  const [suckAt, setSuckAt] = useState<{ x: number; y: number } | null>(null);
+  const [suckUi, setSuckUi] = useState<SuckUi | null>(null);
   const els = useRef<Record<ActorId, ActorEls>>({
-    sigi: { wrap: null, lift: null, shadow: null },
-    mu: { wrap: null, lift: null, shadow: null },
-    quin: { wrap: null, lift: null, shadow: null },
+    sigi: { wrap: null, lift: null, shadow: null, spin: null },
+    mu: { wrap: null, lift: null, shadow: null, spin: null },
+    quin: { wrap: null, lift: null, shadow: null, spin: null },
   });
   const engineRef = useRef<Engine | null>(null);
   const langRef = useRef<Language>(lang);
   const sectionRef = useRef<string | null>(null);
 
   useEffect(() => { langRef.current = lang; }, [lang]);
+  useEffect(() => { routerRef.current = router; }, [router]);
 
   useEffect(() => {
     if (!active) return;
@@ -319,10 +369,108 @@ export const MascotWorld: React.FC<{ lang: Language }> = ({ lang }) => {
       engine.react(detail);
     };
     const onResize = () => engine.resize();
+
+    // ----- Tersedot ke tombol Coba Sekarang, lalu pindah halaman -----
+    let sucking = false;
+    let suckRaf = 0;
+    let suckTimer: ReturnType<typeof setTimeout> | undefined;
+    let suckButton: HTMLElement | null = null;
+
+    const restoreAfterSuck = () => {
+      sucking = false;
+      setSuckAt(null);
+      setSuckUi(null);
+      suckButton?.classList.remove("mw-suck-target");
+      ACTOR_IDS.forEach((id) => {
+        const e = els.current[id];
+        if (e.spin) { e.spin.style.transform = ""; e.spin.style.opacity = ""; }
+        if (e.shadow) e.shadow.style.opacity = "";
+      });
+      engine.start();
+    };
+
+    const onSuck = (e: Event) => {
+      const d = (e as CustomEvent<SuckDetail>).detail;
+      if (sucking) return;
+      sucking = true;
+      d.claim();
+      engine.stop();
+      routerRef.current.prefetch(d.href);
+
+      const size = window.innerWidth >= 768 ? 64 : 48;
+      const H = window.innerHeight;
+      suckButton = d.el;
+      d.el.classList.add("mw-suck-target");
+      setSuckAt({ x: d.x, y: d.y });
+
+      const paths = ACTOR_IDS.map((id, i) => {
+        const r = els.current[id].lift?.getBoundingClientRect();
+        const cx = r ? r.left + r.width / 2 : d.x;
+        const cy = r ? r.top + r.height / 2 : d.y;
+        return { id, i, r0: Math.hypot(cx - d.x, cy - d.y), th0: Math.atan2(cy - d.y, cx - d.x), dir: i % 2 === 0 ? 1 : -1 };
+      });
+      ACTOR_IDS.forEach((id) => { const sh = els.current[id].shadow; if (sh) sh.style.opacity = "0"; });
+
+      const lines = SUCK_LINES;
+      let lastPhase = -1;
+      const t0 = performance.now();
+
+      const frame = (now: number) => {
+        const p = Math.min(1, (now - t0) / SUCK_MS);
+
+        for (const s of paths) {
+          const e = els.current[s.id];
+          const pull = Math.pow(p, 2.1);
+          const r = s.r0 * (1 - pull) * (1 + 0.07 * Math.sin(p * Math.PI * 6 + s.i));
+          const th = s.th0 + s.dir * (2.4 + s.i * 0.35) * 2 * Math.PI * Math.pow(p, 1.5);
+          const hop = Math.sin(Math.min(1, p / 0.18) * Math.PI) * 38 * (1 - p);
+          const cx = d.x + r * Math.cos(th);
+          const cy = d.y + r * Math.sin(th) - hop;
+          const scale = p < 0.55 ? 1 : Math.max(0.08, 1 - Math.pow((p - 0.55) / 0.45, 1.4) * 0.92);
+          const rot = s.dir * 900 * Math.pow(p, 1.7);
+          if (e.wrap) e.wrap.style.transform = `translate3d(${cx - size / 2}px,0,0)`;
+          if (e.lift) e.lift.style.transform = `translate3d(0,${cy - (H - FLOOR - size / 2)}px,0)`;
+          if (e.spin) {
+            e.spin.style.transform = `rotate(${rot}deg) scale(${scale})`;
+            e.spin.style.opacity = p > 0.94 ? String(Math.max(0, (1 - p) / 0.06)) : "1";
+          }
+        }
+
+        const phase = p < 0.18 ? 0 : p < 0.45 ? 1 : p < 0.75 ? 2 : 3;
+        if (phase !== lastPhase) {
+          lastPhase = phase;
+          const speaker = phase < 3 ? lines[phase] : null;
+          const next = {} as SuckUi;
+          for (const id of ACTOR_IDS) {
+            next[id] = {
+              face: SUCK_FACES[id][phase],
+              bubble: speaker && speaker.actor === id ? (langRef.current === "id" ? speaker.id : speaker.en) : null,
+            };
+          }
+          setSuckUi(next);
+        }
+
+        if (p < 1) {
+          suckRaf = requestAnimationFrame(frame);
+          return;
+        }
+        d.el.classList.remove("mw-suck-target");
+        routerRef.current.push(d.href);
+        // Bila halaman tujuan tidak kunjung terbuka, pulihkan arena agar tidak macet.
+        suckTimer = setTimeout(restoreAfterSuck, 4000);
+      };
+      suckRaf = requestAnimationFrame(frame);
+    };
+
     window.addEventListener(MASCOT_EVENT, onReact);
+    window.addEventListener(MASCOT_SUCK_EVENT, onSuck);
     window.addEventListener("resize", onResize);
 
     return () => {
+      cancelAnimationFrame(suckRaf);
+      if (suckTimer) clearTimeout(suckTimer);
+      suckButton?.classList.remove("mw-suck-target");
+      window.removeEventListener(MASCOT_SUCK_EVENT, onSuck);
       engine.stop();
       engineRef.current = null;
       io.disconnect();
@@ -339,10 +487,20 @@ export const MascotWorld: React.FC<{ lang: Language }> = ({ lang }) => {
   return (
     <>
       {active && (
-        <div aria-hidden="true" className="pointer-events-none fixed inset-x-0 bottom-0 z-40 h-0">
+        <div aria-hidden="true" className={`pointer-events-none fixed inset-x-0 bottom-0 h-0 ${suckAt ? "z-[60]" : "z-40"}`}>
           <div className="absolute inset-x-0 h-[3px] bg-white opacity-70 mix-blend-difference" style={{ bottom: FLOOR - 4 }} />
           {ACTOR_IDS.map((id) => {
-            const a = ui.actors[id];
+            const base = ui.actors[id];
+            const sl = suckUi ? suckUi[id] : null;
+            const a = sl
+              ? {
+                  ...base,
+                  look: { ...base.look, pose: "air" as const, face: sl.face, aura: false },
+                  bubble: sl.bubble ? { text: sl.bubble, shift: 0, key: 1000 + sl.bubble.length } : null,
+                  fx: null,
+                  hover: false,
+                }
+              : base;
             const element = ELEMENT[id];
             return (
               <div
@@ -365,7 +523,10 @@ export const MascotWorld: React.FC<{ lang: Language }> = ({ lang }) => {
                   {a.bubble && <BubbleView key={a.bubble.key} text={a.bubble.text} shift={a.bubble.shift} />}
                   {a.fx && <FxView key={a.fx.key} kind={a.fx.kind} dir={a.dir} />}
                   {a.look.aura && <AuraView element={element} />}
-                  <div style={a.hover ? { animation: "mw-hover 1.4s steps(2, end) infinite" } : undefined}>
+                  <div
+                    ref={(el) => { els.current[id].spin = el; }}
+                    style={a.hover ? { animation: "mw-hover 1.4s steps(2, end) infinite" } : undefined}
+                  >
                     <div key={`hop-${a.hop}`} style={a.hop > 0 ? { animation: "mw-hop 450ms steps(1, end) 1" } : undefined}>
                       <Mascot
                         character={id}
@@ -386,6 +547,7 @@ export const MascotWorld: React.FC<{ lang: Language }> = ({ lang }) => {
           <BeamsLayer beams={ui.beams} />
         </div>
       )}
+      {suckAt && <SuckPortal x={suckAt.x} y={suckAt.y} />}
       <button
         type="button"
         onClick={() => setPref(!enabled)}

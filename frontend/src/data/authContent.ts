@@ -3,7 +3,7 @@ import type { ErrorKey, Mode, Role } from "@/lib/authValidation";
 
 export type StageKey =
   | "idle" | "email" | "name" | "role" | "password" | "peek" | "weak" | "strong"
-  | "submitting" | "error" | "success" | "switching";
+  | "submitting" | "error" | "success" | "switching" | "landing" | "dizzy";
 
 interface ModeCopy {
   title: string;
@@ -128,6 +128,8 @@ export const authContent: Record<Language, AuthCopy> = {
       success: "",
       successByMode: { login: "Berhasil! Selamat datang kembali.", register: "Akun jadi! Selamat datang!", forgot: "Permintaan diterima." },
       switching: "",
+      landing: "WUAAAH!",
+      dizzy: "Pusing... bintang di mana-mana.",
     },
     toggleMascots: "Maskot",
   },
@@ -218,6 +220,8 @@ export const authContent: Record<Language, AuthCopy> = {
       success: "",
       successByMode: { login: "Done! Welcome back.", register: "Account ready! Welcome!", forgot: "Request received." },
       switching: "",
+      landing: "WHOOOA!",
+      dizzy: "Dizzy... stars everywhere.",
     },
     toggleMascots: "Mascots",
   },
