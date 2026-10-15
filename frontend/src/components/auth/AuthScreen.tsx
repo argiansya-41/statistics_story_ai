@@ -85,10 +85,11 @@ export const AuthScreen: React.FC<{ initialMode: Mode }> = ({ initialMode }) => 
     };
   }, []);
 
-  // Alihkan otomatis setelah berhasil, hanya bila server nyata terhubung dan alamat aplikasi diisi.
+  // Alihkan otomatis setelah berhasil (kecuali mode pemulihan sandi).
   useEffect(() => {
-    if (status !== "success" || isDemoMode || !POST_AUTH_URL || mode === "forgot") return;
-    const id = window.setTimeout(() => window.location.assign(POST_AUTH_URL), 1500);
+    if (status !== "success" || mode === "forgot") return;
+    const targetUrl = POST_AUTH_URL || "/dashboard";
+    const id = window.setTimeout(() => window.location.assign(targetUrl), 1500);
     return () => window.clearTimeout(id);
   }, [status, mode]);
 
@@ -266,9 +267,21 @@ export const AuthScreen: React.FC<{ initialMode: Mode }> = ({ initialMode }) => 
                   <p className="mt-4 font-sans text-base leading-snug text-black/70">{m.successBody}</p>
                   {isDemoMode && <p className="font-mono-tech mt-6 border border-black bg-[#EBEB00] p-3 text-[10px] font-bold tracking-wider">{copy.demoNotice}</p>}
                   <div className="mt-8 flex flex-wrap gap-3">
-                    <Link href={POST_AUTH_URL && !isDemoMode && mode !== "forgot" ? POST_AUTH_URL : "/"} className="font-mono-tech group inline-flex h-12 items-center gap-3 border border-black bg-[#EBEB00] px-6 text-xs font-bold tracking-widest transition-colors hover:bg-black hover:text-[#EBEB00]">
-                      {copy.backHome} <span className="transition-transform group-hover:translate-x-1">→</span>
-                    </Link>
+                    {mode !== "forgot" ? (
+                      <Link
+                        href={POST_AUTH_URL || "/dashboard"}
+                        className="font-mono-tech group inline-flex h-12 items-center gap-3 border border-black bg-[#EBEB00] px-6 text-xs font-bold tracking-widest transition-colors hover:bg-black hover:text-[#EBEB00]"
+                      >
+                        Masuk ke Dashboard <span className="transition-transform group-hover:translate-x-1">→</span>
+                      </Link>
+                    ) : (
+                      <Link
+                        href="/"
+                        className="font-mono-tech group inline-flex h-12 items-center gap-3 border border-black bg-[#EBEB00] px-6 text-xs font-bold tracking-widest transition-colors hover:bg-black hover:text-[#EBEB00]"
+                      >
+                        {copy.backHome} <span className="transition-transform group-hover:translate-x-1">→</span>
+                      </Link>
+                    )}
                     {mode === "forgot" && (
                       <button type="button" onClick={() => void switchMode("login")} className="font-mono-tech h-12 border border-black px-6 text-xs font-bold tracking-widest transition-colors hover:bg-black hover:text-white">
                         {copy.tabLogin}

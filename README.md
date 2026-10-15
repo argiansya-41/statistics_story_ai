@@ -68,6 +68,10 @@ Buka [http://localhost:3000](http://localhost:3000) di browser Anda.
 - `/masuk` : Halaman Login dengan panggung maskot reaktif dan transisi mosaik piksel.
 - `/daftar` : Halaman Registrasi akun dengan pengukur kekuatan sandi dan konfeti sukses.
 - `/lupa-sandi` : Halaman Pemulihan akun dan permintaan reset tautan.
+- `/dashboard` : Dashboard utama pengguna berisi ringkasan metrik dan daftar analisis terbaru.
+- `/analisis/baru` : Modul analisis statistik baru dengan dukungan upload CSV/Excel, input manual, dan validasi data instan.
+- `/analisis/[id]` : Laporan hasil analisis lengkap dengan kartu statistik, visualisasi grafik, narasi interpretatif AI, dan studi kasus.
+- `/analisis/riwayat` : Riwayat seluruh analisis statistik yang telah disimpan dengan fitur filter dan pencarian.
 
 ---
 
