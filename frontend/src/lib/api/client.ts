@@ -1,4 +1,4 @@
-import { getAccessToken, getRefreshToken, setTokens, clearSession } from "@/lib/auth";
+import { getAccessToken, getRefreshToken, setTokens, clearSession } from "@/lib/session";
 
 export const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
 

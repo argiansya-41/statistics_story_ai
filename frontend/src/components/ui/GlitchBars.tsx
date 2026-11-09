@@ -275,7 +275,7 @@ export const GlitchBars: React.FC<{ className?: string }> = ({ className = "" })
     } catch {
       // Ignore storage errors in restricted contexts
     }
-    const initialWait = hasPreloader ? 2500 : 1200;
+    const initialWait = hasPreloader ? 5180 : 1200;
 
     /**
      * Start the one-way lifecycle:
@@ -336,6 +336,58 @@ export const GlitchBars: React.FC<{ className?: string }> = ({ className = "" })
     const currentContainer = containerRef.current;
     let observer: IntersectionObserver | null = null;
 
+    const handlePreloadDone = () => {
+      timersRef.current.forEach((t) => clearTimeout(t));
+      timersRef.current = [];
+      hasTriggeredRef.current = true;
+
+      BARS_CONFIG.forEach((bar, idx) => {
+        const barEl = barRefs.current[idx];
+        if (!barEl) return;
+
+        const stagger =
+          STAGGER_BETWEEN_BARS_MS[0] +
+          Math.random() * (STAGGER_BETWEEN_BARS_MS[1] - STAGGER_BETWEEN_BARS_MS[0]);
+        // Opsi 1: langsung meluncur instan (0ms delay) begitu tirai tuntas terbuka
+        const barDelay = idx * stagger;
+
+        const timer = setTimeout(() => {
+          const duration = Math.floor(
+            IN_DURATION_MS[0] + Math.random() * (IN_DURATION_MS[1] - IN_DURATION_MS[0])
+          );
+
+          barEl.style.setProperty("--in-duration", `${duration}ms`);
+          barEl.setAttribute("data-state", "in");
+
+          if (typeof barEl.animate === "function") {
+            const anim = barEl.animate(
+              [
+                { clipPath: "inset(0 0 0 100%)" },
+                { clipPath: "inset(0 0 0 0%)" },
+              ],
+              {
+                duration,
+                easing: EASING_CURVE,
+                fill: "forwards",
+              }
+            );
+
+            anim.onfinish = () => {
+              barEl.style.clipPath = "inset(0 0 0 0%)";
+              barEl.setAttribute("data-state", "settled");
+            };
+          } else {
+            barEl.style.clipPath = "inset(0 0 0 0%)";
+            barEl.setAttribute("data-state", "settled");
+          }
+        }, barDelay);
+
+        timersRef.current.push(timer);
+      });
+    };
+
+    window.addEventListener("stat_story_preloader_done", handlePreloadDone);
+
     if (currentContainer && typeof IntersectionObserver !== "undefined") {
       observer = new IntersectionObserver(
         (entries) => {
@@ -354,6 +406,7 @@ export const GlitchBars: React.FC<{ className?: string }> = ({ className = "" })
 
     // Cleanup on unmount
     return () => {
+      window.removeEventListener("stat_story_preloader_done", handlePreloadDone);
       if (observer) observer.disconnect();
       timersRef.current.forEach((t) => clearTimeout(t));
       timersRef.current = [];

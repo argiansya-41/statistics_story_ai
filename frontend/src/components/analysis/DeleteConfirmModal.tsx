@@ -2,10 +2,13 @@
 
 import React, { useEffect } from "react";
 import { AlertTriangle, Trash2, X } from "lucide-react";
+import { Mascot } from "@/components/ui/Mascot";
 
 interface DeleteConfirmModalProps {
   isOpen: boolean;
-  analysisTitle: string;
+  analysisTitle?: string;
+  isAll?: boolean;
+  totalCount?: number;
   onConfirm: () => void;
   onCancel: () => void;
   isDeleting: boolean;
@@ -13,7 +16,9 @@ interface DeleteConfirmModalProps {
 
 export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
   isOpen,
-  analysisTitle,
+  analysisTitle = "",
+  isAll = false,
+  totalCount = 0,
   onConfirm,
   onCancel,
   isDeleting,
@@ -42,7 +47,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
           <div className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4" />
             <span className="font-mono-tech text-xs font-bold tracking-wider uppercase">
-              KONFIRMASI PENGHAPUSAN
+              {isAll ? "KONFIRMASI HAPUS SEMUA RIWAYAT" : "KONFIRMASI PENGHAPUSAN"}
             </span>
           </div>
           <button
@@ -57,13 +62,34 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-6 space-y-4">
-          <p className="font-sans text-sm text-black/80 leading-relaxed">
-            Apakah Anda yakin ingin menghapus analisis{" "}
-            <strong className="text-black font-bold font-mono-tech">&quot;{analysisTitle}&quot;</strong>?
-          </p>
-          <p className="font-mono-tech text-xs text-[#FF2E2E] bg-[#FF2E2E]/10 p-3 border border-[#FF2E2E]/30">
-            Tindakan ini permanen. Seluruh data hasil perhitungan statistik, narasi AI, dan visualisasi grafik terkait akan dihapus (ON DELETE CASCADE).
-          </p>
+          <div className="flex items-center gap-4">
+            <Mascot character="mu" pose="cover" face="sad" className="w-14 h-14 shrink-0" />
+            <p className="font-sans text-sm text-black/90 leading-relaxed">
+              {isAll ? (
+                <>
+                  Apakah Anda yakin ingin menghapus{" "}
+                  <strong className="text-black font-bold font-mono-tech">
+                    seluruh riwayat analisis ({totalCount} sesi)
+                  </strong>
+                  ?
+                </>
+              ) : (
+                <>
+                  Apakah Anda yakin ingin menghapus analisis{" "}
+                  <strong className="text-black font-bold font-mono-tech">
+                    &quot;{analysisTitle}&quot;
+                  </strong>
+                  ?
+                </>
+              )}
+            </p>
+          </div>
+          <div className="font-mono-tech text-xs text-[#C40000] bg-[#FF2E2E]/10 p-3 border border-[#FF2E2E]">
+            <strong>Peringatan Penghapusan:</strong> Tindakan ini permanen dan tidak dapat dibatalkan.
+            {isAll
+              ? " Seluruh sesi analisis, dataset yang telah diunggah, visualisasi grafik SVG, dan narasi akademik dua bahasa di akun Anda akan dihapus seluruhnya."
+              : " Seluruh data turunan (angka ringkasan, narasi AI dua bahasa, dan visualisasi grafik SVG) akan ikut terhapus dari repositori akun Anda."}
+          </div>
         </div>
 
         {/* Modal Footer Buttons */}
@@ -83,7 +109,13 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
             className="px-5 py-2 bg-[#FF2E2E] text-white font-mono-tech text-xs font-bold hover:bg-black transition-colors flex items-center gap-2 disabled:opacity-50"
           >
             <Trash2 className="w-3.5 h-3.5" />
-            <span>{isDeleting ? "Menghapus..." : "Ya, Hapus Analisis"}</span>
+            <span>
+              {isDeleting
+                ? "Menghapus..."
+                : isAll
+                ? `Ya, Hapus Semua (${totalCount})`
+                : "Ya, Hapus Analisis"}
+            </span>
           </button>
         </div>
       </div>

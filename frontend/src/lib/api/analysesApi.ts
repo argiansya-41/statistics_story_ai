@@ -1,5 +1,5 @@
 import { apiFetch, isBackendConfigured } from "./client";
-import { MockAnalysisService } from "./mockService";
+import { demoBackend } from "./mockService";
 import type {
   AnalysisRecord,
   AnalysisType,
@@ -12,43 +12,99 @@ import type {
 } from "@/lib/types/analysis";
 
 /**
- * Service API Analisis Terpusat
- * Menggunakan backend FastAPI nyata jika NEXT_PUBLIC_API_URL diisi.
- * Jika kosong, menggunakan MockAnalysisService yang terisolasi dengan penanda mode demo.
+ * Antarmuka seragam AnalysisApi sesuai PRD
  */
-export const AnalysesApi = {
+export interface AnalysisApi {
+  isLiveBackend(): boolean;
+  isDemoMode(): boolean;
+  create(namaSesi?: string): Promise<AnalysisRecord>;
+  submitDataset(
+    id: string | number,
+    dataset: DatasetSummary,
+    file?: File
+  ): Promise<AnalysisRecord>;
+  saveConfig(
+    id: string | number,
+    jenis: AnalysisType,
+    config: DescriptiveConfig | TTestConfig | CorrelationConfig | RegressionConfig
+  ): Promise<AnalysisRecord>;
+  run(id: string | number): Promise<AnalysisRecord>;
+  requestNarrative(id: string | number, lang: "id" | "en"): Promise<AnalysisRecord>;
+  getResult(id: string | number): Promise<AnalysisRecord>;
+  saveToHistory(id: string | number): Promise<AnalysisRecord>;
+  listHistory(page?: number, limit?: number, search?: string): Promise<HistoryListResponse>;
+  getDetail(id: string | number): Promise<AnalysisRecord>;
+  delete(id: string | number): Promise<void>;
+  deleteAll(): Promise<{ message?: string; deleted_count?: number }>;
+  getSimulateAiFailure(): boolean;
+  setSimulateAiFailure(simulate: boolean): void;
+}
+
+/**
+ * Pemetaan tunggal respons backend FastAPI ke tipe internal AnalysisRecord
+ */
+function mapBackendResponseToRecord(raw: any): AnalysisRecord {
+  if (!raw) return raw;
+  return {
+    id_analisis: raw.id_analisis ?? raw.id ?? Date.now(),
+    id_pengguna: raw.id_pengguna ?? raw.user_id,
+    nama_sesi: raw.nama_sesi ?? raw.title ?? raw.session_name ?? "Analisis",
+    deskripsi: raw.deskripsi ?? raw.description,
+    jenis_analisis: raw.jenis_analisis ?? raw.analysis_type ?? "deskriptif",
+    status: raw.status ?? "draf",
+    tanggal: raw.tanggal ?? raw.created_at ?? new Date().toISOString(),
+    disimpan: Boolean(raw.disimpan ?? raw.is_saved ?? false),
+    config_json: raw.config_json ?? raw.config,
+    dataset_input: raw.dataset_input ?? raw.dataset,
+    hasil: raw.hasil ?? raw.result ?? raw.results ?? null,
+    visualisasi: raw.visualisasi ?? raw.visualizations ?? [],
+    narasi: {
+      id: raw.narasi?.id ?? raw.narrative?.id ?? null,
+      en: raw.narasi?.en ?? raw.narrative?.en ?? null,
+    },
+    contoh_kasus: raw.contoh_kasus ?? raw.case_study ?? null,
+    pesan: raw.pesan ?? raw.message,
+    error: raw.error ? {
+      code: raw.error.code ?? "ERROR",
+      message: raw.error.message ?? "Terjadi kesalahan",
+      field: raw.error.field,
+    } : null,
+  };
+}
+
+/**
+ * Implementasi httpApi untuk server nyata (FastAPI backend)
+ */
+export const httpApi: AnalysisApi = {
   isLiveBackend(): boolean {
-    return isBackendConfigured();
+    return true;
   },
 
-  /**
-   * FR-02: Membuat sesi analisis baru (status 'draf')
-   * POST /api/v1/analyses
-   */
+  isDemoMode(): boolean {
+    return false;
+  },
+
+  getSimulateAiFailure(): boolean {
+    return false;
+  },
+
+  setSimulateAiFailure(_simulate: boolean): void {
+    /* Hanya relevan di demo */
+  },
+
   async create(namaSesi: string = "Analisis Baru"): Promise<AnalysisRecord> {
-    if (!isBackendConfigured()) {
-      return MockAnalysisService.createAnalysis(namaSesi);
-    }
     const res = await apiFetch<any>("/api/v1/analyses", {
       method: "POST",
       body: JSON.stringify({ nama_sesi: namaSesi }),
     });
-    return res;
+    return mapBackendResponseToRecord(res);
   },
 
-  /**
-   * FR-02, FR-03, FR-04: Mengirim dataset (manual JSON atau multipart CSV/Excel)
-   * POST /api/v1/analyses/{id}/dataset
-   */
   async submitDataset(
     id: string | number,
     dataset: DatasetSummary,
     file?: File
   ): Promise<AnalysisRecord> {
-    if (!isBackendConfigured()) {
-      return MockAnalysisService.saveDataset(id, dataset);
-    }
-
     if (file) {
       const formData = new FormData();
       formData.append("file", file);
@@ -57,21 +113,20 @@ export const AnalysesApi = {
       if (dataset.nama_dataset) {
         formData.append("nama_dataset", dataset.nama_dataset);
       }
-
       const res = await apiFetch<any>(`/api/v1/analyses/${id}/dataset`, {
         method: "POST",
         body: formData,
       });
-      return res;
+      const record = mapBackendResponseToRecord(res);
+      if (!record.dataset_input) record.dataset_input = dataset;
+      return record;
     }
 
-    // Input manual JSON atau statistik siap pakai
     const body: Record<string, unknown> = {
       sumber_input: dataset.sumber_input,
       format_data: dataset.format_data,
       nama_dataset: dataset.nama_dataset,
     };
-
     if (dataset.sumber_input === "siap_pakai") {
       body.data_siap_pakai = dataset.data_siap_pakai;
     } else {
@@ -83,22 +138,16 @@ export const AnalysesApi = {
       method: "POST",
       body: JSON.stringify(body),
     });
-    return res;
+    const record = mapBackendResponseToRecord(res);
+    if (!record.dataset_input) record.dataset_input = dataset;
+    return record;
   },
 
-  /**
-   * FR-06: Menyimpan konfigurasi analisis & kolom
-   * PUT /api/v1/analyses/{id}/config
-   */
   async saveConfig(
     id: string | number,
     jenis: AnalysisType,
     config: DescriptiveConfig | TTestConfig | CorrelationConfig | RegressionConfig
   ): Promise<AnalysisRecord> {
-    if (!isBackendConfigured()) {
-      return MockAnalysisService.saveConfig(id, jenis, config);
-    }
-
     const res = await apiFetch<any>(`/api/v1/analyses/${id}/config`, {
       method: "PUT",
       body: JSON.stringify({
@@ -106,131 +155,84 @@ export const AnalysesApi = {
         config_json: config,
       }),
     });
-    return res;
+    return mapBackendResponseToRecord(res);
   },
 
-  /**
-   * FR-07, FR-08, FR-09, FR-10, FR-11: Menjalankan analisis statistik
-   * POST /api/v1/analyses/{id}/run
-   */
   async run(id: string | number): Promise<AnalysisRecord> {
-    if (!isBackendConfigured()) {
-      return MockAnalysisService.runAnalysis(id);
-    }
-
     const res = await apiFetch<any>(`/api/v1/analyses/${id}/run`, {
       method: "POST",
     });
-    return res;
+    return mapBackendResponseToRecord(res);
   },
 
-  /**
-   * FR-11, FR-15: Polling / mengambil hasil lengkap
-   * GET /api/v1/analyses/{id}/result
-   */
-  async getResult(id: string | number): Promise<AnalysisRecord> {
-    if (!isBackendConfigured()) {
-      const rec = await MockAnalysisService.getAnalysis(id);
-      if (!rec) throw new Error("Analisis tidak ditemukan");
-      return rec;
-    }
-
-    const res = await apiFetch<any>(`/api/v1/analyses/${id}/result`, {
-      method: "GET",
-    });
-    return res;
-  },
-
-  /**
-   * FR-12: Meminta narasi AI / ganti bahasa narasi
-   * POST /api/v1/analyses/{id}/narrative?lang=id|en
-   */
   async requestNarrative(id: string | number, lang: "id" | "en"): Promise<AnalysisRecord> {
-    if (!isBackendConfigured()) {
-      return MockAnalysisService.regenerateNarrative(id, lang);
-    }
-
     const res = await apiFetch<any>(`/api/v1/analyses/${id}/narrative?lang=${lang}`, {
       method: "POST",
     });
-    return res;
+    return mapBackendResponseToRecord(res);
   },
 
-  /**
-   * FR-15, FR-16: Simpan analisis ke riwayat
-   * POST /api/v1/analyses/{id}/save
-   */
-  async saveToHistory(id: string | number): Promise<AnalysisRecord> {
-    if (!isBackendConfigured()) {
-      return MockAnalysisService.saveToHistory(id);
-    }
+  async getResult(id: string | number): Promise<AnalysisRecord> {
+    const res = await apiFetch<any>(`/api/v1/analyses/${id}/result`, {
+      method: "GET",
+    });
+    return mapBackendResponseToRecord(res);
+  },
 
+  async saveToHistory(id: string | number): Promise<AnalysisRecord> {
     const res = await apiFetch<any>(`/api/v1/analyses/${id}/save`, {
       method: "POST",
     });
-    return res;
+    return mapBackendResponseToRecord(res);
   },
 
-  /**
-   * FR-16: Mengambil daftar riwayat yang tersimpan (paginasi)
-   * GET /api/v1/analyses?page=1&limit=10
-   */
-  async listHistory(page: number = 1, limit: number = 10, search: string = ""): Promise<HistoryListResponse> {
-    if (!isBackendConfigured()) {
-      const all = await MockAnalysisService.listSavedAnalyses();
-      const filtered = search
-        ? all.filter((a) => a.nama_sesi.toLowerCase().includes(search.toLowerCase()))
-        : all;
-      const start = (page - 1) * limit;
-      const paginated = filtered.slice(start, start + limit);
-      return {
-        total: filtered.length,
-        page,
-        limit,
-        data: paginated,
-      };
-    }
-
+  async listHistory(
+    page: number = 1,
+    limit: number = 10,
+    search: string = ""
+  ): Promise<HistoryListResponse> {
     const query = new URLSearchParams({
       page: String(page),
       limit: String(limit),
       ...(search ? { search } : {}),
     });
 
-    const res = await apiFetch<HistoryListResponse>(`/api/v1/analyses?${query.toString()}`, {
+    const res = await apiFetch<any>(`/api/v1/analyses?${query.toString()}`, {
       method: "GET",
     });
-    return res;
+
+    const items = (res.data || res.items || (Array.isArray(res) ? res : [])).map(mapBackendResponseToRecord);
+    return {
+      total: res.total ?? items.length,
+      page: res.page ?? page,
+      limit: res.limit ?? limit,
+      data: items,
+    };
   },
 
-  /**
-   * FR-16: Mengambil detail analisis tersimpan
-   * GET /api/v1/analyses/{id}
-   */
   async getDetail(id: string | number): Promise<AnalysisRecord> {
-    if (!isBackendConfigured()) {
-      const rec = await MockAnalysisService.getAnalysis(id);
-      if (!rec) throw new Error("Analisis tidak ditemukan");
-      return rec;
-    }
-
-    const res = await apiFetch<AnalysisRecord>(`/api/v1/analyses/${id}`, {
+    const res = await apiFetch<any>(`/api/v1/analyses/${id}`, {
       method: "GET",
     });
-    return res;
+    return mapBackendResponseToRecord(res);
   },
 
-  /**
-   * FR-16: Menghapus analisis dari riwayat
-   * DELETE /api/v1/analyses/{id}
-   */
   async delete(id: string | number): Promise<void> {
-    if (!isBackendConfigured()) {
-      return MockAnalysisService.deleteAnalysis(id);
-    }
-
     await apiFetch<void>(`/api/v1/analyses/${id}`, {
       method: "DELETE",
     });
   },
+
+  async deleteAll(): Promise<{ message?: string; deleted_count?: number }> {
+    return await apiFetch<any>("/api/v1/analyses", {
+      method: "DELETE",
+    });
+  },
 };
+
+/**
+ * Pemilihan implementasi berdasarkan ketersediaan NEXT_PUBLIC_API_URL
+ */
+export const api: AnalysisApi = isBackendConfigured() ? httpApi : demoBackend;
+export const AnalysesApi = api;
+export default api;

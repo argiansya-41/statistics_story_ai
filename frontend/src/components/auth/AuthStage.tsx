@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { GenerativeCanvas } from "@/components/ui/GenerativeCanvas";
+import { GlitchRibbonBackground } from "@/components/ui/GlitchRibbonBackground";
 import { GlitchStrip } from "@/components/ui/GlitchStrip";
 import { Mascot } from "@/components/ui/Mascot";
 import type { MascotCharacter, MascotFace, MascotOutfit, MascotPose } from "@/components/ui/Mascot";
@@ -22,8 +22,8 @@ const LOOKS: Record<StageKey, [Look, Look, Look]> = {
   email: [{ pose: "idle", face: "wink" }, { pose: "idle", face: "smile" }, { pose: "idle", face: "think" }],
   name: [{ pose: "idle", face: "talk" }, { pose: "idle", face: "talk" }, { pose: "idle", face: "talk" }],
   role: [{ pose: "point", face: "smile" }, { pose: "idle", face: "wink" }, { pose: "idle", face: "cool" }],
-  password: [{ pose: "cover", face: "smile" }, { pose: "cover", face: "smile" }, { pose: "peek", face: "smile" }],
-  peek: [{ pose: "peek", face: "wow" }, { pose: "peek", face: "smile" }, { pose: "idle", face: "wow" }],
+  password: [{ pose: "cover", face: "smile" }, { pose: "cover", face: "smile" }, { pose: "cover", face: "smile" }],
+  peek: [{ pose: "peek", face: "smile" }, { pose: "peek", face: "smile" }, { pose: "peek", face: "smile" }],
   weak: [{ pose: "idle", face: "sad" }, { pose: "idle", face: "sad" }, { pose: "idle", face: "think" }],
   strong: [{ pose: "cheer", face: "happy" }, { pose: "idle", face: "cool" }, { pose: "cheer", face: "happy" }],
   submitting: [{ pose: "charge", face: "flat" }, { pose: "charge", face: "flat" }, { pose: "charge", face: "flat" }],
@@ -40,7 +40,7 @@ const SPEAKER: Record<StageKey, 0 | 1 | 2> = {
 };
 
 const CHARACTERS: MascotCharacter[] = ["sigi", "mu", "quin"];
-const OUTFITS: MascotOutfit[] = ["none", "none", "glasses"];
+const OUTFITS: MascotOutfit[] = ["none", "none", "none"];
 
 const HEADLINE_STYLE: Record<Mode, { bg: string; fg: string }> = {
   login: { bg: "#003BFF", fg: "#FFFFFF" },
@@ -82,18 +82,27 @@ interface AuthStageProps {
   lang: "id" | "en";
   /** Fase kedatangan: maskot jatuh dari atas, pusing, lalu pulih. */
   arrival: "fall" | "dizzy" | "done";
+  /**
+   * Transisi ke dashboard (tamparan): korban tidak berpindah. Bila korban di tengah, dua maskot di sisinya menampar bersamaan;
+   * bila di pinggir, hanya maskot di sebelahnya yang menampar. windup = mengayun mundur, lunge = menyambar maju sampai
+   * tangan mengenai pipi, hit = tamparan mendarat dan korban berpindah ke overlay.
+   */
+  slap?: { victim: 0 | 1 | 2; phase: "windup" | "lunge" | "hit" } | null;
 }
 
-export const AuthStage: React.FC<AuthStageProps> = ({ mode, copy, stage, bubble, celebrate, shakeKey, hopKey, arrival }) => {
+export const AuthStage: React.FC<AuthStageProps> = ({ mode, copy, stage, bubble, celebrate, shakeKey, hopKey, arrival, slap }) => {
   const m = copy.modes[mode];
   const hs = HEADLINE_STYLE[mode];
   const looks = LOOKS[stage];
-  const speaker = SPEAKER[stage];
+  const speaker = slap ? -1 : SPEAKER[stage];
+  const shownBubble = bubble;
+  // Penampar: korban di tengah -> kedua tetangga; korban di pinggir -> hanya tetangga sebelahnya.
+  const slappers = slap ? (slap.victim === 1 ? [0, 2] : [1]) : [];
 
   return (
     <aside className="relative flex min-h-[420px] flex-col overflow-hidden bg-black text-white bg-blueprint-grid-dark lg:sticky lg:top-0 lg:h-screen">
-      <div aria-hidden="true" className="absolute inset-0 z-0 opacity-40">
-        <GenerativeCanvas variant="ambient" />
+      <div aria-hidden="true" className="absolute inset-0 z-0">
+        <GlitchRibbonBackground />
       </div>
 
       {/* Logo (kotak bertangga seperti navbar) */}
@@ -135,48 +144,87 @@ export const AuthStage: React.FC<AuthStageProps> = ({ mode, copy, stage, bubble,
 
       {/* Panggung maskot */}
       <div className="relative z-10 mt-auto pt-16 lg:pt-0">
-        <div key={shakeKey} className={`relative mx-auto flex max-w-[520px] items-end justify-center gap-4 px-6 pb-0 md:gap-8 ${shakeKey > 0 ? "auth-shake-big" : ""}`}>
-          {looks.map((look, i) => (
-            <div key={i} className="relative flex w-[72px] flex-col items-center md:w-24">
-              {speaker === i && bubble && (
+        <div key={shakeKey} className={`relative mx-auto flex max-w-[520px] items-end justify-center gap-4 px-6 pb-0 [--reach:49px] md:gap-8 md:[--reach:76px] ${shakeKey > 0 ? "auth-shake-big" : ""}`}>
+          {looks.map((baseLook, i) => {
+            const isVictim = !!slap && slap.victim === i;
+            const isSlapper = slappers.includes(i);
+            const ph = slap?.phase;
+            const toward = slap ? (slap.victim > i ? 1 : -1) : 1; // arah ke korban
+            // Suasana tetap main-main: penampar menyeringai (smug), korban masih bersorak sampai tamparan datang.
+            let look: Look = baseLook;
+            let transform: string | undefined;
+            let transition = "transform 300ms cubic-bezier(0.3,0,0.2,1)";
+            if (slap && isSlapper) {
+              if (ph === "windup") {
+                look = { pose: "charge", face: "smug" };
+                transform = `translateX(${-toward * 16}px) rotate(${-toward * 9}deg)`;
+              } else if (ph === "lunge") {
+                look = { pose: "cast", face: "shout" };
+                transform = `translateX(calc(var(--reach) * ${toward})) rotate(${toward * 4}deg)`;
+                transition = "transform 110ms cubic-bezier(0.6,0,1,0.55)";
+              } else {
+                look = { pose: "cast", face: "smug" };
+                transform = `translateX(calc(var(--reach) * ${toward} - ${toward * 10}px)) rotate(${toward * 2}deg)`;
+                transition = "transform 240ms cubic-bezier(0.2,0.9,0.3,1)";
+              }
+            } else if (slap && isVictim) {
+              look = { pose: "cheer", face: ph === "windup" ? "happy" : "wow" };
+            } else if (slap) {
+              look = { pose: "cheer", face: ph === "hit" ? "wow" : "happy" };
+            }
+            return (
+              <div
+                key={i}
+                data-auth-mascot={i}
+                className="relative flex w-[72px] flex-col items-center md:w-24"
+                style={{
+                  transform,
+                  transition,
+                  zIndex: isSlapper ? 30 : slap && isVictim ? 20 : undefined,
+                  visibility: isVictim && ph === "hit" ? "hidden" : undefined,
+                }}
+              >
+                {speaker === i && shownBubble && (
+                  <div
+                    key={shownBubble}
+                    className={`absolute bottom-full z-20 mb-3 w-max max-w-[220px] border border-black bg-white px-3 py-2 font-mono-tech text-[10px] leading-snug text-black ${
+                      i === 0 ? "left-0" : i === 2 ? "right-0" : "left-1/2 -translate-x-1/2"
+                    }`}
+                    style={{ animation: "mw-bubble-in 200ms steps(3, end) both" }}
+                    role="status"
+                  >
+                    {shownBubble}
+                    <span
+                      className="absolute top-full -mt-px block h-1.5 w-1.5 bg-white"
+                      style={{ left: i === 0 ? 36 : i === 2 ? undefined : "calc(50% - 3px)", right: i === 2 ? 36 : undefined, boxShadow: "1px 1px 0 0 #000" }}
+                    />
+                  </div>
+                )}
+                {arrival === "fall" && <LandingDust delay={i * 240 + 780} />}
+                {arrival === "dizzy" && <DizzyStars />}
                 <div
-                  key={bubble}
-                  className={`absolute bottom-full z-20 mb-3 w-max max-w-[220px] border border-black bg-white px-3 py-2 font-mono-tech text-[10px] leading-snug text-black ${
-                    i === 0 ? "left-0" : i === 2 ? "right-0" : "left-1/2 -translate-x-1/2"
-                  }`}
-                  style={{ animation: "mw-bubble-in 200ms steps(3, end) both" }}
-                  role="status"
+                  key={`hop-${hopKey}`}
+                  className={arrival === "fall" ? "auth-land" : undefined}
+                  style={
+                    arrival === "fall"
+                      ? ({ ["--land-delay" as string]: `${i * 240}ms` } as React.CSSProperties)
+                      : hopKey > 0
+                        ? { animation: "mw-hop 450ms steps(1, end) 1" }
+                        : undefined
+                  }
                 >
-                  {bubble}
-                  <span
-                    className="absolute top-full -mt-px block h-1.5 w-1.5 bg-white"
-                    style={{ left: i === 0 ? 36 : i === 2 ? undefined : "calc(50% - 3px)", right: i === 2 ? 36 : undefined, boxShadow: "1px 1px 0 0 #000" }}
+                  <Mascot
+                    character={CHARACTERS[i]}
+                    pose={look.pose}
+                    face={look.face}
+                    outfit={OUTFITS[i]}
+                    flip={isSlapper && toward === -1}
+                    className="h-[72px] w-[72px] md:h-24 md:w-24"
                   />
                 </div>
-              )}
-              {arrival === "fall" && <LandingDust delay={i * 240 + 780} />}
-              {arrival === "dizzy" && <DizzyStars />}
-              <div
-                key={`hop-${hopKey}`}
-                className={arrival === "fall" ? "auth-land" : undefined}
-                style={
-                  arrival === "fall"
-                    ? ({ ["--land-delay" as string]: `${i * 240}ms` } as React.CSSProperties)
-                    : hopKey > 0
-                      ? { animation: "mw-hop 450ms steps(1, end) 1" }
-                      : undefined
-                }
-              >
-                <Mascot
-                  character={CHARACTERS[i]}
-                  pose={look.pose}
-                  face={look.face}
-                  outfit={OUTFITS[i]}
-                  className="h-[72px] w-[72px] md:h-24 md:w-24"
-                />
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
         <div className="h-2 w-full bg-[#EBEB00]" />
         <GlitchStrip className="relative" />

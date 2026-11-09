@@ -31,3 +31,15 @@ pnpm-debug.log*
 # System & OS
 .DS_Store
 Thumbs.db
+
+# Python
+__pycache__/
+*/__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+*/.venv/
+venv/
+*/venv/
+*.sqlite3
+*.db

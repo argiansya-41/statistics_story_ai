@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import type { Language } from "@/data/content";
 import { Mascot } from "@/components/ui/Mascot";
 import type { MascotFace } from "@/components/ui/Mascot";
 import { ACTOR_IDS, DEFAULT_LOOK, ELEMENT, createEngine } from "@/lib/mascotEngine";
-import type { ActorId, BeamUi, BurstUi, Element as ElementKind, Engine, Fx, ProjectileUi, UiState } from "@/lib/mascotEngine";
+import type { ActorId, BeamUi, BurstUi, Element as ElementKind, Engine, Fx, GhostUi, ProjectileUi, UiState, AskUi, BubbleKind } from "@/lib/mascotEngine";
+import { PROFILES } from "@/data/mascotProfiles";
 import { SCRIPTS } from "@/data/mascotScripts";
 import { MASCOT_EVENT } from "@/lib/mascotBus";
 import { MASCOT_SUCK_EVENT } from "@/lib/tryNow";
@@ -56,22 +57,37 @@ function useMedia(query: string): boolean {
 }
 
 // ---------- Sprite piksel ----------
+const spriteRects = (rows: string[], palette: Record<string, string>) => {
+  const out: React.ReactElement[] = [];
+  rows.forEach((row, y) => {
+    let x = 0;
+    while (x < row.length) {
+      const c = row[x];
+      let w = 1;
+      while (x + w < row.length && row[x + w] === c) w++;
+      if (palette[c]) out.push(<rect key={`${x}-${y}`} x={x} y={y} width={w} height={1} fill={palette[c]} />);
+      x += w;
+    }
+  });
+  return out;
+};
+
+/** Sprite piksel. Mendukung cahaya (glow) dan frame kedua (alt) yang bergantian agar jurus tampak hidup. */
 const PixelSprite: React.FC<{ sprite: Sprite; className?: string; style?: React.CSSProperties }> = ({ sprite, className, style }) => {
-  const { rows, palette, scale } = sprite;
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox={`0 0 ${rows[0].length} ${rows.length}`}
-      width={rows[0].length * scale}
-      height={rows.length * scale}
-      shapeRendering="crispEdges"
-      className={className}
-      style={style}
-    >
-      {rows.flatMap((row, y) =>
-        row.split("").map((c, x) => (palette[c] ? <rect key={`${x}-${y}`} x={x} y={y} width={1} height={1} fill={palette[c]} /> : null))
-      )}
+  const { rows, palette, scale, glow, alt } = sprite;
+  const w = rows[0].length * scale;
+  const h = rows.length * scale;
+  const svg = (r: string[], extra?: React.CSSProperties) => (
+    <svg aria-hidden="true" viewBox={`0 0 ${r[0].length} ${r.length}`} width={w} height={h} shapeRendering="crispEdges" className={className} style={extra}>
+      {spriteRects(r, palette)}
     </svg>
+  );
+  const filter = glow ? `drop-shadow(0 0 3px ${glow}) drop-shadow(0 0 9px ${glow})` : undefined;
+  return (
+    <span style={{ position: "relative", display: "inline-block", width: w, height: h, filter, ...style }}>
+      {svg(rows, alt ? { animation: "mw-alt-a 260ms steps(1) infinite" } : undefined)}
+      {alt && <span style={{ position: "absolute", inset: 0, animation: "mw-alt-b 260ms steps(1) infinite" }}>{svg(alt)}</span>}
+    </span>
   );
 };
 
@@ -139,18 +155,82 @@ const AuraView: React.FC<{ element: ElementKind }> = ({ element }) => (
   </div>
 );
 
-const BubbleView: React.FC<{ text: string; shift: number }> = ({ text, shift }) => (
-  <div className="absolute bottom-full left-1/2 z-10 mb-3" style={{ transform: `translateX(calc(-50% + ${shift}px))` }}>
-    <div className="relative" style={{ animation: "mw-bubble-in 200ms steps(3, end) both" }}>
-      <div className="w-max max-w-[190px] border border-black bg-white px-2.5 py-1.5 font-mono-tech text-[10px] leading-snug text-black">
-        {text}
+/** Balon bicara: efek ketik, label nama berwarna elemen, dan gaya "teriak" untuk nama jurus. */
+const BubbleView: React.FC<{ text: string; shift: number; kind: BubbleKind; who: ActorId }> = ({ text, shift, kind, who }) => {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setN((v) => (v >= text.length ? v : v + 2)), kind === "shout" ? 18 : 24);
+    return () => window.clearInterval(id);
+  }, [text, kind]);
+  const pf = PROFILES[who];
+  const shown = text.slice(0, n);
+  return (
+    <div className="absolute bottom-full left-1/2 z-10 mb-3" style={{ transform: `translateX(calc(-50% + ${shift}px))` }}>
+      <div className="relative" style={{ animation: `${kind === "shout" ? "mw-shout-in 260ms steps(4, end)" : "mw-bubble-in 200ms steps(3, end)"} both` }}>
+        {kind === "shout" ? (
+          <div className="w-max max-w-[220px] border-2 border-black px-3 py-1.5 font-mono-tech text-[11px] font-bold uppercase leading-snug tracking-wide" style={{ background: pf.color, color: pf.ink, boxShadow: "3px 3px 0 0 #000" }}>
+            {shown}
+          </div>
+        ) : (
+          <div className="w-max max-w-[200px] border border-black bg-white px-2.5 py-1.5 font-mono-tech text-[10px] leading-snug text-black" style={{ boxShadow: `0 -3px 0 0 ${pf.color} inset` }}>
+            <span className="mr-1 inline-block px-1 text-[8px] font-bold tracking-widest" style={{ background: pf.color, color: pf.ink }}>{pf.symbol}</span>
+            {shown}
+          </div>
+        )}
+        <span className="absolute top-full -mt-px block h-1.5 w-1.5 bg-white" style={{ left: `calc(50% - ${shift}px - 3px)`, boxShadow: "1px 1px 0 0 #000", background: kind === "shout" ? pf.color : "#fff" }} />
       </div>
-      <span className="absolute top-full -mt-px block h-1.5 w-1.5 bg-white" style={{ left: `calc(50% - ${shift}px - 3px)`, boxShadow: "1px 1px 0 0 #000" }} />
     </div>
-  </div>
-);
+  );
+};
+
+/** Kuis: pertanyaan dan tombol jawaban yang bisa diklik pengunjung. */
+const AskView: React.FC<{ ask: AskUi; shift: number; onAnswer: (i: number) => void }> = ({ ask, shift, onAnswer }) => {
+  const pf = PROFILES[ask.who];
+  return (
+    <div className="absolute bottom-full left-1/2 z-20 mb-3" style={{ transform: `translateX(calc(-50% + ${shift}px))`, animation: "mw-bubble-in 200ms steps(3, end) both" }}>
+      <div className="w-max max-w-[240px] border-2 border-black bg-white p-2 font-mono-tech text-[10px] leading-snug text-black" style={{ boxShadow: `3px 3px 0 0 ${pf.color}` }}>
+        <p className="mb-2">{ask.q}</p>
+        <div className="flex flex-wrap gap-1.5">
+          {ask.options.map((o, i) => (
+            <button
+              key={i}
+              type="button"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); onAnswer(i); }}
+              className="pointer-events-auto border border-black px-2 py-1 text-[10px] font-bold transition-colors hover:text-white"
+              style={{ background: pf.color, color: pf.ink }}
+            >
+              {o}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/** Kartu nama saat kursor di atas maskot. */
+const NamePlate: React.FC<{ who: ActorId; lang: Language }> = ({ who }) => {
+  const pf = PROFILES[who];
+  return (
+    <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 -translate-x-1/2" style={{ animation: "mw-bubble-in 160ms steps(3, end) both" }}>
+      <div className="w-max border border-black px-1.5 py-0.5 font-mono-tech text-[9px] font-bold tracking-widest" style={{ background: pf.color, color: pf.ink }}>
+        {pf.name.toUpperCase()}
+      </div>
+    </div>
+  );
+};
 
 // ---------- Peluru, sinar, ledakan ----------
+/** Arah sprite peluru: dibalik bila ke kiri; meteor diputar mengikuti lintasan. */
+const projTransform = (p: ProjectileUi): string | undefined => {
+  if (p.rot) {
+    const th = (Math.atan2(-(p.y1 - p.y0), p.x1 - p.x0) * 180) / Math.PI;
+    return p.x1 >= p.x0 ? `rotate(${th}deg)` : `rotate(${th - 180}deg) scaleX(-1)`;
+  }
+  return p.dir === -1 ? "scaleX(-1)" : undefined;
+};
+
 const ProjectileView: React.FC<{ p: ProjectileUi }> = ({ p }) => {
   const sprite = PROJECTILES[p.kind];
   const w = sprite.rows[0].length * sprite.scale;
@@ -169,34 +249,70 @@ const ProjectileView: React.FC<{ p: ProjectileUi }> = ({ p }) => {
       }}
     >
       <div style={{ ["--arc" as string]: `${p.arc}px`, animation: p.arc ? `mw-proj-arc ${p.ms}ms linear forwards` : undefined }}>
-        <PixelSprite sprite={sprite} style={{ transform: p.dir === -1 ? "scaleX(-1)" : undefined }} />
+        <PixelSprite sprite={sprite} style={{ transform: projTransform(p) }} />
       </div>
     </div>
   );
 };
 
-const BEAM_STYLE: Record<BeamUi["kind"], { under: string; main: string; core: string; w: number }> = {
-  jet: { under: "#003BFF", main: "#9CC8FF", core: "#FFFFFF", w: 9 },
-  flame: { under: "#FF2E2E", main: "#FF8A00", core: "#EBEB00", w: 11 },
-  bolt: { under: "#003BFF", main: "#EBEB00", core: "#FFFFFF", w: 7 },
+const BEAM_STYLE: Record<BeamUi["kind"], { under: string; main: string; core: string; glow: string; w: number }> = {
+  jet: { under: "#1f5cff", main: "#8fd0ff", core: "#FFFFFF", glow: "#6fb4ff", w: 10 },
+  flame: { under: "#e0261c", main: "#ff8a00", core: "#fff6c8", glow: "#ff8a00", w: 12 },
+  bolt: { under: "#2a4bff", main: "#ffe600", core: "#FFFFFF", glow: "#ffe600", w: 8 },
 };
 const BeamsLayer: React.FC<{ beams: BeamUi[] }> = ({ beams }) => (
   <svg aria-hidden="true" className="pointer-events-none absolute bottom-0 left-0 overflow-visible" width={1} height={1}>
+    <defs>
+      <filter id="mw-beam-glow" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="6" />
+      </filter>
+    </defs>
     {beams.map((b) => {
       const st = BEAM_STYLE[b.kind];
       const pts = b.points.map(([x, y]) => `${x},${-(FLOOR + y)}`).join(" ");
       return (
         <g key={b.key} style={{ animation: `mw-beam ${b.ms}ms linear forwards` }} strokeLinejoin="miter" strokeLinecap="square" fill="none">
+          <polyline points={pts} stroke={st.glow} strokeWidth={st.w + 16} opacity={0.55} filter="url(#mw-beam-glow)" />
           <polyline points={pts} stroke={st.under} strokeWidth={st.w + 4} />
           <polyline points={pts} stroke={st.main} strokeWidth={st.w} />
           <polyline points={pts} stroke={st.core} strokeWidth={Math.max(2, st.w / 3)} />
+          <polyline points={pts} stroke="#FFFFFF" strokeWidth={4} strokeDasharray="3 15" style={{ animation: "mw-beam-flow 380ms linear infinite" }} />
         </g>
       );
     })}
   </svg>
 );
 
+const CONFETTI_COLORS = ["#FF2E2E", "#EBEB00", "#003BFF", "#FFFFFF", "#5BA8FF", "#FF8A00"];
+const ConfettiBurst: React.FC<{ b: BurstUi }> = ({ b }) => {
+  const bits = React.useMemo(
+    () => Array.from({ length: 32 }, (_, i) => ({ dx: ((i * 37) % 200) - 100, h: 130 + ((i * 53) % 130), c: CONFETTI_COLORS[i % CONFETTI_COLORS.length], d: (i * 29) % 300 })),
+    []
+  );
+  return (
+    <div className="pointer-events-none absolute" style={{ left: b.x, bottom: FLOOR + 40 }}>
+      {bits.map((c, i) => (
+        <span
+          key={i}
+          className="absolute block h-1.5 w-1.5"
+          style={{ background: c.c, ["--dx" as string]: `${c.dx}px`, ["--h" as string]: `${c.h}px`, animation: `mw-confetti ${b.ms}ms ${c.d}ms cubic-bezier(0.2,0.7,0.4,1) both` }}
+        />
+      ))}
+    </div>
+  );
+};
+
 const BurstView: React.FC<{ b: BurstUi }> = ({ b }) => {
+  if (b.kind === "confetti") return <ConfettiBurst b={b} />;
+  if (b.kind === "rain") {
+    const sprite = BURSTS.rain;
+    const w = sprite.rows[0].length * sprite.scale;
+    return (
+      <div className="pointer-events-none absolute" style={{ left: b.x, bottom: FLOOR, marginLeft: -w / 2, animation: `mw-rain ${b.ms}ms linear both` }}>
+        <PixelSprite sprite={sprite} />
+      </div>
+    );
+  }
   if (b.kind === "geyser" || b.kind === "pillar") {
     const sprite = COLUMNS[b.kind];
     const w = sprite.rows[0].length * sprite.scale;
@@ -220,7 +336,7 @@ const BurstView: React.FC<{ b: BurstUi }> = ({ b }) => {
         bottom: FLOOR + b.y,
         marginLeft: -w / 2,
         marginBottom: -h / 2,
-        animation: `${isRadial(b.kind) ? "mw-pop" : "mw-puff"} ${Math.min(b.ms, 700)}ms steps(1, end) both`,
+        animation: `${b.kind === "ring" || b.kind === "shield" ? "mw-ring" : isRadial(b.kind) ? "mw-pop" : "mw-puff"} ${b.kind === "shield" ? b.ms : Math.min(b.ms, 700)}ms ${b.kind === "ring" || b.kind === "shield" ? "ease-out" : "steps(1, end)"} both`,
       }}
     >
       <PixelSprite sprite={sprite} />
@@ -228,16 +344,29 @@ const BurstView: React.FC<{ b: BurstUi }> = ({ b }) => {
   );
 };
 
+/** Bayangan sisa saat dash (kilat melesat). */
+const GhostView: React.FC<{ g: GhostUi }> = ({ g }) => (
+  <div className="pointer-events-none absolute h-12 w-12 md:h-[72px] md:w-[72px]" style={{ left: g.x, bottom: FLOOR + g.y, opacity: 0.55, animation: `mw-ghost ${g.ms}ms linear both`, filter: "drop-shadow(0 0 6px #ffe600)" }}>
+    <Mascot character={g.who} pose="run" face="angry" flip={g.dir === -1} className="h-full w-full" />
+  </div>
+);
+
 // ---------- Komponen utama ----------
 const INITIAL_UI: UiState = {
   actors: {
-    sigi: { look: DEFAULT_LOOK.sigi, dir: 1, bubble: null, fx: null, hop: 0, hover: false },
-    mu: { look: DEFAULT_LOOK.mu, dir: 1, bubble: null, fx: null, hop: 0, hover: false },
-    quin: { look: DEFAULT_LOOK.quin, dir: -1, bubble: null, fx: null, hop: 0, hover: false },
+    sigi: { look: DEFAULT_LOOK.sigi, dir: 1, bubble: null, fx: null, hop: 0, spin: 0, hover: false },
+    mu: { look: DEFAULT_LOOK.mu, dir: 1, bubble: null, fx: null, hop: 0, spin: 0, hover: false },
+    quin: { look: DEFAULT_LOOK.quin, dir: -1, bubble: null, fx: null, hop: 0, spin: 0, hover: false },
   },
   projectiles: [],
   beams: [],
   bursts: [],
+  ghosts: [],
+  ask: null,
+  energy: 0,
+  flash: null,
+  shake: 0,
+  screenCrack: null,
 };
 
 const FINALE_SECTIONS = new Set(["early-access", "mulai", "footer"]);
@@ -298,14 +427,78 @@ export const MascotWorld: React.FC<{ lang: Language }> = ({ lang }) => {
   const [ui, setUi] = useState<UiState>(INITIAL_UI);
   const [suckAt, setSuckAt] = useState<{ x: number; y: number } | null>(null);
   const [suckUi, setSuckUi] = useState<SuckUi | null>(null);
+  const [hoverId, setHoverId] = useState<ActorId | null>(null);
+  const hintShown = useRef(0);
   const els = useRef<Record<ActorId, ActorEls>>({
     sigi: { wrap: null, lift: null, shadow: null, spin: null },
     mu: { wrap: null, lift: null, shadow: null, spin: null },
     quin: { wrap: null, lift: null, shadow: null, spin: null },
   });
+  const posRef = useRef<Record<ActorId, { x: number; y: number }>>({
+    sigi: { x: 0, y: 0 },
+    mu: { x: 0, y: 0 },
+    quin: { x: 0, y: 0 },
+  });
   const engineRef = useRef<Engine | null>(null);
   const langRef = useRef<Language>(lang);
   const sectionRef = useRef<string | null>(null);
+
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<{ id: ActorId; sx: number; sy: number; moved: boolean } | null>(null);
+
+  const onActorDown = (e: React.PointerEvent<HTMLDivElement>, id: ActorId) => {
+    if (e.button !== 0) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    dragRef.current = { id, sx: e.clientX, sy: e.clientY, moved: false };
+  };
+  const onActorMove = (e: React.PointerEvent<HTMLDivElement>, id: ActorId) => {
+    const d = dragRef.current;
+    if (!d || d.id !== id) return;
+    const eng = engineRef.current;
+    if (!eng) return;
+    if (!d.moved) {
+      if (Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 6) return;
+      d.moved = true;
+      setDragging(true);
+      eng.grab(id);
+    }
+    const size = window.innerWidth >= 768 ? 72 : 48;
+    eng.drag(id, e.clientX - size / 2, window.innerHeight - FLOOR - e.clientY - size / 2);
+  };
+  const onActorUp = (e: React.PointerEvent<HTMLDivElement>, id: ActorId) => {
+    const d = dragRef.current;
+    if (!d || d.id !== id) return;
+    dragRef.current = null;
+    const el = e.currentTarget as HTMLElement;
+    if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+    setDragging(false);
+    if (d.moved) engineRef.current?.release(id);
+    else if (e.type === "pointerup") {
+      engineRef.current?.poke(id);
+      if (hintShown.current < 2) hintShown.current += 1;
+    }
+  };
+
+  useEffect(() => {
+    const handleGlobalRelease = () => {
+      const d = dragRef.current;
+      if (d) {
+        dragRef.current = null;
+        setDragging(false);
+        if (d.moved) {
+          engineRef.current?.release(d.id);
+        }
+      }
+    };
+    window.addEventListener("pointerup", handleGlobalRelease);
+    window.addEventListener("pointercancel", handleGlobalRelease);
+    window.addEventListener("blur", handleGlobalRelease);
+    return () => {
+      window.removeEventListener("pointerup", handleGlobalRelease);
+      window.removeEventListener("pointercancel", handleGlobalRelease);
+      window.removeEventListener("blur", handleGlobalRelease);
+    };
+  }, []);
 
   useEffect(() => { langRef.current = lang; }, [lang]);
   useEffect(() => { routerRef.current = router; }, [router]);
@@ -316,7 +509,7 @@ export const MascotWorld: React.FC<{ lang: Language }> = ({ lang }) => {
     const host = {
       width: () => window.innerWidth,
       height: () => window.innerHeight,
-      size: () => (window.innerWidth >= 768 ? 64 : 48),
+      size: () => (window.innerWidth >= 768 ? 72 : 48),
       reserveRight: () => 96,
       lang: () => langRef.current,
       section: () => sectionRef.current,
@@ -328,6 +521,7 @@ export const MascotWorld: React.FC<{ lang: Language }> = ({ lang }) => {
       cancelRaf: (id: number) => window.cancelAnimationFrame(id),
       onCommit: (next: UiState) => setUi(next),
       onMove: (id: ActorId, x: number, y: number) => {
+        posRef.current[id] = { x, y };
         const e = els.current[id];
         if (e.wrap) e.wrap.style.transform = `translate3d(${x}px,0,0)`;
         if (e.lift) e.lift.style.transform = `translate3d(0,${-y}px,0)`;
@@ -397,7 +591,7 @@ export const MascotWorld: React.FC<{ lang: Language }> = ({ lang }) => {
       engine.stop();
       routerRef.current.prefetch(d.href);
 
-      const size = window.innerWidth >= 768 ? 64 : 48;
+      const size = window.innerWidth >= 768 ? 72 : 48;
       const H = window.innerHeight;
       suckButton = d.el;
       d.el.classList.add("mw-suck-target");
@@ -462,11 +656,66 @@ export const MascotWorld: React.FC<{ lang: Language }> = ({ lang }) => {
       suckRaf = requestAnimationFrame(frame);
     };
 
+    // ----- Tidur saat lama tak ada aktivitas, bangun saat pengunjung kembali -----
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+    let asleep = false;
+    const armIdle = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => { if (!sucking) { asleep = true; engine.sleep(); } }, 40000);
+    };
+    const onActivity = () => {
+      if (asleep) { asleep = false; engine.wake(); }
+      armIdle();
+    };
+    armIdle();
+
+    // ----- Scroll terlalu kencang -> pusing -----
+    let lastY = window.scrollY, lastT = performance.now(), fastSince = 0, lastDizzy = -1e9;
+    const onScroll = () => {
+      const now = performance.now();
+      const v = (Math.abs(window.scrollY - lastY) / Math.max(1, now - lastT)) * 1000;
+      lastY = window.scrollY; lastT = now;
+      if (v > 3200) {
+        if (!fastSince) fastSince = now;
+        if (now - fastSince > 350 && now - lastDizzy > 30000) { lastDizzy = now; fastSince = 0; engine.trigger("dizzy"); }
+      } else if (v < 1500) fastSince = 0;
+    };
+
+    // ----- Kembali ke tab -----
+    let hiddenAt = 0;
+    const onVis = () => {
+      if (document.hidden) hiddenAt = performance.now();
+      else if (hiddenAt && performance.now() - hiddenAt > 20000) { hiddenAt = 0; engine.trigger("back"); }
+    };
+
+    // ----- Kode Konami -----
+    const KONAMI = ["ArrowUp", "ArrowUp", "ArrowDown", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowLeft", "ArrowRight", "b", "a"];
+    let kpos = 0;
+    const onKey = (e: KeyboardEvent) => {
+      onActivity();
+      const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+      kpos = k === KONAMI[kpos] ? kpos + 1 : k === KONAMI[0] ? 1 : 0;
+      if (kpos === KONAMI.length) { kpos = 0; engine.trigger("konami"); }
+    };
+
     window.addEventListener(MASCOT_EVENT, onReact);
     window.addEventListener(MASCOT_SUCK_EVENT, onSuck);
     window.addEventListener("resize", onResize);
+    window.addEventListener("pointermove", onActivity, { passive: true });
+    window.addEventListener("pointerdown", onActivity, { passive: true });
+    window.addEventListener("wheel", onActivity, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("keydown", onKey);
+    document.addEventListener("visibilitychange", onVis);
 
     return () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      window.removeEventListener("pointermove", onActivity);
+      window.removeEventListener("pointerdown", onActivity);
+      window.removeEventListener("wheel", onActivity);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("visibilitychange", onVis);
       cancelAnimationFrame(suckRaf);
       if (suckTimer) clearTimeout(suckTimer);
       suckButton?.classList.remove("mw-suck-target");
@@ -487,8 +736,12 @@ export const MascotWorld: React.FC<{ lang: Language }> = ({ lang }) => {
   return (
     <>
       {active && (
+        <>
+        {ui.flash && <div key={ui.flash.key} aria-hidden="true" className="pointer-events-none fixed inset-0 z-[39]" style={{ background: ui.flash.color, animation: "mw-flash 380ms ease-out both" }} />}
         <div aria-hidden="true" className={`pointer-events-none fixed inset-x-0 bottom-0 h-0 ${suckAt ? "z-[60]" : "z-40"}`}>
-          <div className="absolute inset-x-0 h-[3px] bg-white opacity-70 mix-blend-difference" style={{ bottom: FLOOR - 4 }} />
+          <div key={`arena-shake-${ui.shake}`} style={ui.shake ? { animation: "mw-shake 360ms steps(8, end) 1" } : undefined} className="pointer-events-none absolute inset-x-0 bottom-0 h-0">
+            <div className="absolute inset-x-0 h-[3px] bg-white opacity-70 mix-blend-difference" style={{ bottom: FLOOR - 4 }} />
+          </div>
           {ACTOR_IDS.map((id) => {
             const base = ui.actors[id];
             const sl = suckUi ? suckUi[id] : null;
@@ -496,31 +749,55 @@ export const MascotWorld: React.FC<{ lang: Language }> = ({ lang }) => {
               ? {
                   ...base,
                   look: { ...base.look, pose: "air" as const, face: sl.face, aura: false },
-                  bubble: sl.bubble ? { text: sl.bubble, shift: 0, key: 1000 + sl.bubble.length } : null,
+                  bubble: sl.bubble ? { text: sl.bubble, shift: 0, key: 1000 + sl.bubble.length, kind: "say" as const } : null,
                   fx: null,
                   hover: false,
                 }
               : base;
             const element = ELEMENT[id];
+            const p = posRef.current[id];
             return (
               <div
                 key={id}
-                ref={(el) => { els.current[id].wrap = el; }}
-                className="pointer-events-none absolute left-0 h-12 w-12 md:h-16 md:w-16"
-                style={{ bottom: FLOOR, willChange: "transform" }}
+                ref={(el) => {
+                  els.current[id].wrap = el;
+                  if (el) el.style.transform = `translate3d(${posRef.current[id].x}px,0,0)`;
+                }}
+                className="pointer-events-none absolute left-0 h-12 w-12 md:h-[72px] md:w-[72px]"
+                style={{ bottom: FLOOR, transform: `translate3d(${p.x}px,0,0)`, willChange: "transform" }}
               >
                 <div
-                  ref={(el) => { els.current[id].shadow = el; }}
+                  ref={(el) => {
+                    els.current[id].shadow = el;
+                    if (el) {
+                      const y = posRef.current[id].y;
+                      el.style.transform = `translateX(-50%) scaleX(${Math.max(0.35, 1 - y / 260)})`;
+                      el.style.opacity = String(Math.max(0.1, 0.45 - y / 420));
+                    }
+                  }}
                   className="absolute -bottom-1 left-1/2 h-1.5 w-10 bg-black md:w-12"
-                  style={{ opacity: 0.45, transform: "translateX(-50%)" }}
+                  style={{ opacity: Math.max(0.1, 0.45 - p.y / 420), transform: `translateX(-50%) scaleX(${Math.max(0.35, 1 - p.y / 260)})` }}
                 />
                 <div
-                  ref={(el) => { els.current[id].lift = el; }}
-                  onClick={() => engineRef.current?.poke(id)}
-                  className="pointer-events-auto relative h-full w-full cursor-pointer"
-                  style={{ willChange: "transform" }}
+                  ref={(el) => {
+                    els.current[id].lift = el;
+                    if (el) el.style.transform = `translate3d(0,${-posRef.current[id].y}px,0)`;
+                  }}
+                  onPointerDown={(e) => onActorDown(e, id)}
+                  onPointerMove={(e) => onActorMove(e, id)}
+                  onPointerUp={(e) => onActorUp(e, id)}
+                  onPointerCancel={(e) => onActorUp(e, id)}
+                  onPointerEnter={(e) => { setHoverId(id); engineRef.current?.hover(id, e.clientX); }}
+                  onPointerLeave={() => setHoverId((h) => (h === id ? null : h))}
+                  className="pointer-events-auto relative h-full w-full cursor-grab touch-none active:cursor-grabbing"
+                  style={{ transform: `translate3d(0,${-p.y}px,0)`, willChange: "transform" }}
                 >
-                  {a.bubble && <BubbleView key={a.bubble.key} text={a.bubble.text} shift={a.bubble.shift} />}
+                  {ui.ask && ui.ask.who === id ? (
+                    <AskView ask={ui.ask} shift={0} onAnswer={(i) => engineRef.current?.answer(i)} />
+                  ) : (
+                    a.bubble && <BubbleView key={a.bubble.key} text={a.bubble.text} shift={a.bubble.shift} kind={a.bubble.kind} who={id} />
+                  )}
+                  {hoverId === id && !a.bubble && !ui.ask && !dragging && <NamePlate who={id} lang={lang} />}
                   {a.fx && <FxView key={a.fx.key} kind={a.fx.kind} dir={a.dir} />}
                   {a.look.aura && <AuraView element={element} />}
                   <div
@@ -528,26 +805,56 @@ export const MascotWorld: React.FC<{ lang: Language }> = ({ lang }) => {
                     style={a.hover ? { animation: "mw-hover 1.4s steps(2, end) infinite" } : undefined}
                   >
                     <div key={`hop-${a.hop}`} style={a.hop > 0 ? { animation: "mw-hop 450ms steps(1, end) 1" } : undefined}>
-                      <Mascot
-                        character={id}
-                        pose={a.look.pose}
-                        face={a.look.face}
-                        outfit={a.look.outfit}
-                        flip={a.dir === -1}
-                        className="h-12 w-12 md:h-16 md:w-16"
-                      />
+                      <div key={`spin-${a.spin}`} style={a.spin > 0 ? { animation: "mw-flip 520ms steps(8, end) 1" } : undefined}>
+                        <div style={a.look.aura ? { filter: `drop-shadow(0 0 4px ${PROFILES[id].color}) drop-shadow(0 0 10px ${PROFILES[id].color})`, animation: "mw-aura-pulse 700ms steps(2, end) infinite" } : undefined}>
+                          <Mascot
+                            character={id}
+                            pose={a.look.pose}
+                            face={a.look.face}
+                            outfit={a.look.outfit}
+                            flip={a.dir === -1}
+                            className="h-12 w-12 md:h-[72px] md:w-[72px]"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             );
           })}
+          {ui.ghosts.map((g) => <GhostView key={g.key} g={g} />)}
           {ui.bursts.map((b) => <BurstView key={b.key} b={b} />)}
           {ui.projectiles.map((p) => <ProjectileView key={p.key} p={p} />)}
           <BeamsLayer beams={ui.beams} />
         </div>
+        </>
       )}
       {suckAt && <SuckPortal x={suckAt.x} y={suckAt.y} />}
+      {active && (
+        <div className="fixed bottom-9 right-3 z-[41] flex items-center gap-1.5">
+          {ui.energy >= 100 ? (
+            <button
+              type="button"
+              onClick={() => engineRef.current?.fireUltimate()}
+              className="border border-black bg-[#EBEB00] px-2 py-1 font-mono-tech text-[10px] font-bold tracking-widest text-black"
+              style={{ animation: "mw-aura-pulse 600ms steps(2, end) infinite" }}
+              title={lang === "id" ? "Keluarkan jurus pamungkas" : "Fire the ultimate move"}
+            >
+              {lang === "id" ? "★ PAMUNGKAS!" : "★ ULTIMATE!"}
+            </button>
+          ) : (
+            <div
+              className="flex items-center gap-[2px] border border-white/40 bg-black px-1.5 py-1"
+              title={lang === "id" ? "Energi maskot: klik, seret, dan jawab kuis untuk mengisi" : "Mascot energy: click, drag, and answer quizzes to fill"}
+            >
+              {Array.from({ length: 10 }, (_, k) => (
+                <span key={k} className="block h-2 w-1.5" style={{ background: ui.energy >= (k + 1) * 10 ? ["#5BA8FF", "#FF8A00", "#EBEB00"][k % 3] : "rgba(255,255,255,0.18)" }} />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       <button
         type="button"
         onClick={() => setPref(!enabled)}

@@ -1,0 +1,13 @@
+fastapi[standard]
+sqlalchemy
+psycopg[binary]
+bcrypt
+PyJWT
+python-dotenv
+email-validator
+pandas
+scipy
+openpyxl
+python-multipart
+google-genai
+groq

@@ -19,10 +19,13 @@ export interface Text { id: string; en: string }
 export type Element = "water" | "fire" | "lightning";
 export const ELEMENT: Record<ActorId, Element> = { sigi: "water", mu: "fire", quin: "lightning" };
 
-export type Fx = "pow" | "heart" | "sweat" | "anger" | "stars" | "spark";
+export type Fx = "pow" | "heart" | "sweat" | "anger" | "stars" | "spark" | "note" | "bulb" | "zzz" | "quest" | "bang";
 export type ProjectileKind = "bubble" | "tide" | "fireball" | "orb";
 export type BeamKind = "jet" | "flame" | "bolt";
-export type BurstKind = "splash" | "blast" | "shock" | "steam" | "puff" | "geyser" | "pillar";
+export type BurstKind = "splash" | "blast" | "shock" | "steam" | "puff" | "geyser" | "pillar" | "rain" | "ring" | "star" | "shield" | "confetti";
+export type StrikeKind = "geyser" | "pillar" | "thunder" | "rain" | "meteor" | "storm";
+export type EventName = "sleep" | "wake" | "back" | "dizzy" | "konami";
+export type BubbleKind = "say" | "shout";
 
 export interface Look { pose: MascotPose; face: MascotFace; outfit: MascotOutfit; aura?: boolean }
 
@@ -31,7 +34,7 @@ export type Target = number | { near: ActorId; gap: number } | { meet: ActorId; 
 
 export type Action = (
   | { who: ActorId; walk: Target; run?: boolean; speed?: number } // menunggu sampai tiba
-  | { who: ActorId; say: Text; ms?: number } // menunggu sampai balon hilang
+  | { who: ActorId; say: Text; ms?: number; style?: BubbleKind } // menunggu sampai balon hilang
   | { who: ActorId; set: Partial<Look> } // instan
   | { who: ActorId; turn: ActorId | "left" | "right" } // instan
   | { who: ActorId; fx: Fx; ms?: number } // instan, efek berjalan sendiri
@@ -43,10 +46,23 @@ export type Action = (
   | { who: ActorId; dash: Target } // meluncur sangat cepat (tanpa ganti pose), menunggu
   | { who: ActorId; shoot: { kind: ProjectileKind; at: ActorId; speed?: number; miss?: number } } // menunggu sampai kena/meleset
   | { who: ActorId; beam: { kind: BeamKind; at: ActorId; ms?: number; miss?: number } } // sinar, menunggu sampai padam
-  | { who: ActorId; strike: { kind: "geyser" | "pillar" | "thunder"; at: ActorId | number; ms?: number } } // jurus area
+  | { who: ActorId; strike: { kind: StrikeKind; at: ActorId | number; ms?: number } } // jurus area
+  | { who: ActorId; chain: { via: ActorId[]; ms?: number } } // rantai petir melompat antar sasaran, menunggu sampai padam
+  | { who: ActorId; ask: Quiz } // kuis interaktif: pengunjung memilih jawaban, maskot bereaksi
   | { burst: { kind: BurstKind; at: ActorId | number; y?: number; ms?: number } } // ledakan/efek, instan
   | { wait: number }
 ) & { after?: number }; // after = tunda sekian ms sebelum aksi ini dimulai
+
+export interface Quiz {
+  q: Text;
+  options: Text[];
+  correct: number;
+  right: Step[];
+  wrong: Step[];
+  timeout: Step[];
+  /** Batas waktu menjawab (ms). */
+  ms?: number;
+}
 
 /** Semua aksi dalam satu langkah berjalan bersamaan; langkah selesai setelah semua aksi yang menunggu selesai. */
 export type Step = Action[];
@@ -59,14 +75,37 @@ export interface Episode {
   steps: Step[];
 }
 
+export interface EnragedRant {
+  shout: Text;
+  followUp: Text;
+}
+
 export interface Scripts {
   episodes: Episode[];
   finale: Episode;
-  poke: Text[];
-  pokeReply: Text[];
+  /** Jurus pamungkas yang keluar saat energi penuh. */
+  ultimate: Episode;
+  /** Episode pendek yang dipicu peristiwa halaman. */
+  events: Partial<Record<EventName, Episode>>;
+  /** Kalimat saat diklik, per maskot (sesuai kepribadian). */
+  poke: Record<ActorId, Text[]>;
+  /** Kalimat saat maskot lain diklik, per maskot. */
+  pokeReply: Record<ActorId, Text[]>;
+  /** Kalimat saat diklik beruntun (3x lebih). */
+  combo: Record<ActorId, Text[]>;
+  /** Kalimat saat diklik terlalu banyak (6x lebih). */
+  dizzy: Record<ActorId, Text[]>;
+  /** Reaksi saat maskot dilempar / interaksi dengan user. */
+  throwReaction?: {
+    normal: Record<ActorId, Text[]>;
+    warning: Record<ActorId, Text[]>;
+    enragedRants?: Record<ActorId, EnragedRant[]>;
+    enragedShout?: Record<ActorId, Text>;
+    enragedAfter?: Record<ActorId, Text>;
+  };
 }
 
-export interface Bubble { text: string; shift: number; key: number }
+export interface Bubble { text: string; shift: number; key: number; kind: BubbleKind }
 export interface FxState { kind: Fx; key: number }
 export interface ActorUi {
   look: Look;
@@ -74,19 +113,40 @@ export interface ActorUi {
   bubble: Bubble | null;
   fx: FxState | null;
   hop: number;
+  /** Bertambah tiap kali maskot harus berputar (salto). */
+  spin: number;
   /** true bila sedang melayang di udara tanpa bergerak (efek goyang pelan) */
   hover: boolean;
 }
 export interface ProjectileUi {
-  key: number; kind: ProjectileKind; x0: number; y0: number; x1: number; y1: number; ms: number; dir: 1 | -1; arc: number;
+  key: number; kind: ProjectileKind; x0: number; y0: number; x1: number; y1: number; ms: number; dir: 1 | -1; arc: number; rot?: boolean;
 }
 export interface BeamUi { key: number; kind: BeamKind; points: [number, number][]; ms: number }
 export interface BurstUi { key: number; kind: BurstKind; x: number; y: number; ms: number }
+export interface GhostUi { key: number; who: ActorId; x: number; y: number; dir: 1 | -1; ms: number }
+export interface AskUi { key: number; who: ActorId; q: string; options: string[] }
+export interface ScreenCrackUi {
+  key: number;
+  actorId: ActorId;
+  element: "water" | "fire" | "lightning";
+  x: number;
+  y: number;
+  ms: number;
+}
 export interface UiState {
   actors: Record<ActorId, ActorUi>;
   projectiles: ProjectileUi[];
   beams: BeamUi[];
   bursts: BurstUi[];
+  ghosts: GhostUi[];
+  ask: AskUi | null;
+  /** 0..100. Penuh = jurus pamungkas siap. */
+  energy: number;
+  /** Kilat layar dan guncangan arena (key berubah = animasi ulang). */
+  flash: { key: number; color: string } | null;
+  shake: number;
+  /** Efek retakan layar saat maskot sangat marah ke user. */
+  screenCrack: ScreenCrackUi | null;
 }
 
 export interface EngineHost {
@@ -114,12 +174,26 @@ export interface Engine {
   poke(id: ActorId): void;
   react(detail: { who?: ActorId; text: Text; face?: MascotFace; ms?: number }): void;
   requestFinale(): void;
+  /** Maskot menoleh ke arah penunjuk (px = posisi x layar). */
+  hover(id: ActorId, px: number): void;
+  grab(id: ActorId): void;
+  /** x, y = posisi kiri-bawah kotak maskot (y = tinggi di atas lantai). */
+  drag(id: ActorId, x: number, y: number): void;
+  release(id: ActorId): void;
+  clearScreenCrack(): void;
+  answer(index: number): void;
+  addEnergy(n: number): void;
+  /** Mengeluarkan jurus pamungkas bila energi penuh. */
+  fireUltimate(): boolean;
+  trigger(name: EventName): void;
+  sleep(): void;
+  wake(): void;
 }
 
 export const DEFAULT_LOOK: Record<ActorId, Look> = {
   sigi: { pose: "idle", face: "smile", outfit: "none", aura: false },
   mu: { pose: "idle", face: "smile", outfit: "none", aura: false },
-  quin: { pose: "idle", face: "smile", outfit: "glasses", aura: false },
+  quin: { pose: "idle", face: "smile", outfit: "none", aura: false },
 };
 
 const WALK = 80; // px per detik
@@ -134,6 +208,8 @@ const PROJECTILE_IMPACT: Record<ProjectileKind, BurstKind> = { bubble: "splash",
 const BEAM_IMPACT: Record<BeamKind, BurstKind> = { jet: "splash", flame: "blast", bolt: "shock" };
 
 interface Actor {
+  pokes: number[];
+  spin: number;
   x: number;
   y: number;
   dir: 1 | -1;
@@ -147,7 +223,8 @@ interface Actor {
 }
 
 type Motion =
-  | { type: "speed"; target: number; speed: number; auto: "walk" | "run" | null; resolve: () => void }
+  | { type: "speed"; target: number; speed: number; auto: "walk" | "run" | null; resolve: () => void; dust?: number }
+  | { type: "ballistic"; vx: number; vy: number; bounces: number; peak: number; resolve: () => void }
   | {
       type: "tween"; x0: number; x1: number; y0: number; y1: number; arc: number; dur: number; t: number;
       ease: "inout" | "in" | "out" | "linear"; autoStart: MascotPose | null; autoEnd: "idle" | "keep" | "air"; aura: boolean | null;
@@ -169,11 +246,23 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
   let projectiles: ProjectileUi[] = [];
   let beams: BeamUi[] = [];
   let bursts: BurstUi[] = [];
+  let ghosts: GhostUi[] = [];
+  let ask: AskUi | null = null;
+  let energy = 0;
+  let flash: { key: number; color: string } | null = null;
+  let shake = 0;
+  let screenCrack: ScreenCrackUi | null = null;
+  let epToken = 0;
+  let sleeping = false;
+  let answerFn: ((i: number) => void) | null = null;
+  const held = new Set<ActorId>();
+  const samples = new Map<ActorId, { t: number; x: number; y: number }[]>();
+  const sleepers = new Map<number, () => void>();
 
   const actors = {} as Record<ActorId, Actor>;
   for (const id of ACTOR_IDS) {
     actors[id] = {
-      x: 0, y: 0, dir: 1, look: { ...DEFAULT_LOOK[id] }, bubble: null, fx: null, hop: 0, reactUntil: 0, idleToken: 0, hovering: false,
+      x: 0, y: 0, dir: 1, look: { ...DEFAULT_LOOK[id] }, bubble: null, fx: null, hop: 0, reactUntil: 0, idleToken: 0, hovering: false, pokes: [], spin: 0,
     };
   }
 
@@ -185,11 +274,11 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
     for (const id of ACTOR_IDS) {
       const a = actors[id];
       out[id] = {
-        look: { ...a.look }, dir: a.dir, bubble: a.bubble, fx: a.fx, hop: a.hop,
+        look: { ...a.look }, dir: a.dir, bubble: a.bubble, fx: a.fx, hop: a.hop, spin: a.spin,
         hover: a.hovering && !motions.has(id),
       };
     }
-    host.onCommit({ actors: out, projectiles: [...projectiles], beams: [...beams], bursts: [...bursts] });
+    host.onCommit({ actors: out, projectiles: [...projectiles], beams: [...beams], bursts: [...bursts], ghosts: [...ghosts], ask, energy, flash, shake, screenCrack });
   };
 
   const later = (fn: () => void, ms: number) => {
@@ -200,7 +289,27 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
     timers.add(id);
     return id;
   };
-  const sleep = (ms: number) => new Promise<void>((resolve) => { later(resolve, ms); });
+  const sleep = (ms: number) =>
+    new Promise<void>((resolve) => {
+      const id = later(() => { sleepers.delete(id); resolve(); }, ms);
+      sleepers.set(id, resolve);
+    });
+  /** Membangunkan semua sleep yang sedang menunggu (dipakai saat episode dibatalkan). */
+  const flushSleepers = () => {
+    const all = Array.from(sleepers.entries());
+    sleepers.clear();
+    all.forEach(([id, res]) => { host.clearTimeout(id); timers.delete(id); res(); });
+  };
+  const abortEpisode = () => {
+    epToken++;
+    if (answerFn) answerFn(-1);
+    flushSleepers();
+  };
+  const pulse = (kind: "flash" | "shake", color = "#ffffff") => {
+    if (kind === "flash") flash = { key: ++keyCounter, color };
+    else shake = ++keyCounter;
+    commit();
+  };
 
   const size = () => host.size();
   const usable = () => Math.max(0, host.width() - size() - host.reserveRight() - 16);
@@ -226,6 +335,7 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
   const atX = (at: ActorId | number): number => (typeof at === "number" ? 8 + at * usable() + size() / 2 : actors[at].x + size() / 2);
 
   // ---------- Gerak ----------
+  let onLandedFromThrow: (id: ActorId, peak: number) => void = () => {};
   const ease = (kind: "inout" | "in" | "out" | "linear", p: number) =>
     kind === "linear" ? p : kind === "in" ? p * p : kind === "out" ? 1 - (1 - p) * (1 - p) : p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
 
@@ -251,7 +361,61 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
         } else {
           a.x += Math.sign(dist) * step;
           host.onMove(id, a.x, a.y);
+          if (m.auto === "run" || m.speed >= DASH * 0.9) {
+            m.dust = (m.dust ?? 0) + step;
+            if (m.dust > 70) { m.dust = 0; addBurst("puff", a.x + size() / 2 - Math.sign(dist) * 10, 2, 380); }
+          }
         }
+      } else if (m.type === "ballistic") {
+        const dt = Math.max(0.001, Math.min(0.05, dtMs / 1000));
+        m.vy -= 2400 * dt; // gravitasi
+        a.x += m.vx * dt;
+        a.y += m.vy * dt;
+        m.peak = Math.max(m.peak, Math.abs(m.vy));
+        const maxX = 8 + usable();
+        const maxY = Math.max(100, host.height() - size() - 20);
+
+        // Pantulan atap / langit-langit (mencegah maskot nyetack ke atas / tembus layar)
+        if (a.y >= maxY) {
+          a.y = maxY;
+          if (m.vy > 0) {
+            m.vy = -Math.abs(m.vy) * 0.55; // pantul ke bawah
+            addBurst("puff", a.x + size() / 2, a.y, 350);
+          }
+        }
+
+        // Pantulan dinding kiri dan kanan
+        if (a.x < 8) {
+          a.x = 8;
+          m.vx = Math.abs(m.vx) * 0.6;
+        } else if (a.x > maxX) {
+          a.x = maxX;
+          m.vx = -Math.abs(m.vx) * 0.6;
+        }
+
+        // Pantulan lantai dan mendarat
+        if (a.y <= 0) {
+          a.y = 0;
+          addBurst("puff", a.x + size() / 2, 2, 420);
+          if (Math.abs(m.vy) > 380 && m.bounces < 2) {
+            m.vy = Math.abs(m.vy) * 0.42;
+            m.vx *= 0.7;
+            m.bounces++;
+            if (m.peak > 1100) pulse("shake");
+          } else {
+            host.onMove(id, a.x, a.y);
+            motions.delete(id);
+            a.hovering = false;
+            const hard = m.peak > 1000;
+            a.look = { ...a.look, pose: "idle", face: hard ? "ko" : "happy", aura: false };
+            if (hard) showFx(id, "stars", 1500);
+            commit();
+            onLandedFromThrow(id, m.peak);
+            m.resolve();
+            continue;
+          }
+        }
+        host.onMove(id, a.x, a.y);
       } else {
         m.t += dtMs;
         const p = Math.min(1, m.t / m.dur);
@@ -265,13 +429,24 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
           host.onMove(id, a.x, a.y);
           motions.delete(id);
           a.hovering = a.y > 0.5;
-          if (m.autoEnd === "idle") a.look = { ...a.look, pose: "idle", aura: m.aura === null ? a.look.aura : false };
+          if (m.autoEnd === "idle") {
+            a.look = { ...a.look, pose: "idle", aura: m.aura === null ? a.look.aura : false };
+            if (m.y0 > 8 && a.y < 1) { addBurst("puff", a.x + size() * 0.3, 2, 420); addBurst("puff", a.x + size() * 0.7, 2, 420); }
+          }
           else if (m.autoEnd === "air") a.look = { ...a.look, pose: "air", aura: true };
           commit();
           m.resolve();
         }
       }
     }
+
+    // Safety Watchdog: Bila ada aktor yang melayang di udara tanpa motion & tidak dipegang (dan bukan sedang hovering jurus), segera beri gravitasi jatuh
+    for (const id of ACTOR_IDS) {
+      if (actors[id].y > 0.5 && !motions.has(id) && !held.has(id) && !actors[id].hovering) {
+        setMotion(id, { type: "ballistic", vx: 0, vy: -150, bounces: 0, peak: 200, resolve: () => {} });
+      }
+    }
+
     if (motions.size > 0 && alive) rafId = host.raf(tick);
   };
   const ensureLoop = () => {
@@ -289,6 +464,10 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
 
   const move = (id: ActorId, target: number, speed: number, auto: "walk" | "run" | null) =>
     new Promise<void>((resolve) => {
+      if (held.has(id) || motions.get(id)?.type === "ballistic") {
+        resolve();
+        return;
+      }
       const a = actors[id];
       const to = clampX(target);
       if (Math.abs(to - a.x) < 1) {
@@ -306,6 +485,10 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
     o: { x1: number; y1: number; arc?: number; dur: number; ease: "inout" | "in" | "out" | "linear"; start: MascotPose | null; end: "idle" | "keep" | "air"; aura?: boolean | null }
   ) =>
     new Promise<void>((resolve) => {
+      if (held.has(id) || motions.get(id)?.type === "ballistic") {
+        resolve();
+        return;
+      }
       const a = actors[id];
       const x1 = clampX(o.x1);
       if (Math.abs(x1 - a.x) > 1) a.dir = x1 > a.x ? 1 : -1;
@@ -320,7 +503,7 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
     });
 
   // ---------- Bicara dan efek ----------
-  const say = async (id: ActorId, text: Text, ms?: number) => {
+  const say = async (id: ActorId, text: Text, ms?: number, kind: BubbleKind = "say") => {
     const a = actors[id];
     const str = text[host.lang()];
     const dur = ms ?? Math.max(1700, Math.min(4300, 900 + str.length * 55));
@@ -330,7 +513,7 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
     let shift = 0;
     if (c - 96 < 8) shift = 8 - (c - 96);
     else if (c + 96 > W - 8) shift = W - 8 - (c + 96);
-    a.bubble = { text: str, shift, key };
+    a.bubble = { text: str, shift, key, kind };
     commit();
     await sleep(dur);
     if (a.bubble && a.bubble.key === key) {
@@ -418,23 +601,109 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
     commit();
   };
 
-  const doStrike = async (s: { kind: "geyser" | "pillar" | "thunder"; at: ActorId | number; ms?: number }) => {
+  const thunderAt = (x: number, ms: number) => {
+    const key = ++keyCounter;
+    beams.push({ key, kind: "bolt", points: jag(x, host.height(), x, size() * 0.2, 12, 22), ms: Math.min(ms, 520) });
+    pulse("flash", "#fff6a0");
+    commit();
+    later(() => { beams = beams.filter((b) => b.key !== key); commit(); }, ms);
+  };
+
+  const doChain = async (id: ActorId, c: { via: ActorId[]; ms?: number }) => {
+    const ms = c.ms ?? 900;
+    const [x0, y0] = handOf(id);
+    let pts: [number, number][] = [[x0, y0]];
+    let prev: [number, number] = [x0, y0];
+    for (const v of c.via) {
+      const [cx, cy] = centerOf(v);
+      pts = pts.concat(jag(prev[0], prev[1], cx, cy, 4, 12).slice(1));
+      prev = [cx, cy];
+      later(() => addBurst("shock", cx, cy, 500), 140 + pts.length * 6);
+    }
+    const key = ++keyCounter;
+    beams.push({ key, kind: "bolt", points: pts, ms });
+    pulse("flash", "#ffe600");
+    await sleep(ms);
+    beams = beams.filter((b) => b.key !== key);
+    commit();
+  };
+
+  const doStrike = async (s: { kind: StrikeKind; at: ActorId | number; ms?: number }) => {
     const x = atX(s.at);
     const ms = s.ms ?? 900;
+    if (s.kind === "rain") {
+      addBurst("rain", x, 0, ms);
+      await sleep(ms);
+      return;
+    }
+    if (s.kind === "meteor") {
+      for (let i = 0; i < 4; i++) {
+        later(() => {
+          const x1 = x + (i - 1.5) * 34;
+          const x0 = x1 + 220 + i * 30;
+          const y0 = host.height() * 0.85;
+          const y1 = size() * 0.25;
+          const dist = Math.hypot(x1 - x0, y1 - y0);
+          const pms = Math.max(300, (dist / 620) * 1000);
+          const key = ++keyCounter;
+          projectiles.push({ key, kind: "fireball", x0, y0, x1, y1, ms: pms, dir: -1, arc: 0, rot: true });
+          commit();
+          later(() => { projectiles = projectiles.filter((p) => p.key !== key); addBurst("blast", x1, y1, 600); pulse("shake"); }, pms);
+        }, i * 260);
+      }
+      await sleep(ms);
+      return;
+    }
+    if (s.kind === "storm") {
+      for (let i = 0; i < 5; i++) later(() => thunderAt(x + (i - 2) * 70 + (host.random() - 0.5) * 30, 500), i * 200);
+      pulse("flash", "#fff6a0");
+      await sleep(ms);
+      return;
+    }
     if (s.kind === "thunder") {
       const top = host.height();
       const key = ++keyCounter;
       beams.push({ key, kind: "bolt", points: jag(x, top, x, size() * 0.2, 12, 22), ms: Math.min(ms, 520) });
       commit();
-      later(() => addBurst("shock", x, size() * 0.3, 600), 120);
+      pulse("flash", "#fff6a0");
       await sleep(ms);
       beams = beams.filter((b) => b.key !== key);
       commit();
       return;
     }
+    if (s.kind === "pillar" || s.kind === "geyser") pulse("shake");
     addBurst(s.kind, x, 0, ms);
     await sleep(ms);
   };
+
+  // ---------- Kuis interaktif ----------
+  const doAsk = async (id: ActorId, q: Quiz) => {
+    const tok = epToken;
+    const lang = host.lang();
+    const key = ++keyCounter;
+    actors[id].look = { ...actors[id].look, face: "talk", pose: "point" };
+    ask = { key, who: id, q: q.q[lang], options: q.options.map((o) => o[lang]) };
+    commit();
+    const choice = await new Promise<number>((resolve) => {
+      let done = false;
+      const finish = (i: number) => { if (done) return; done = true; answerFn = null; resolve(i); };
+      answerFn = finish;
+      later(() => finish(-2), q.ms ?? 14000);
+    });
+    ask = null;
+    actors[id].look = { ...actors[id].look, pose: "idle", face: "smile" };
+    commit();
+    if (tok !== epToken || choice === -1) return;
+    if (choice >= 0) energy = Math.min(100, energy + (choice === q.correct ? 15 : 5));
+    await runSteps(choice === -2 ? q.timeout : choice === q.correct ? q.right : q.wrong, tok);
+  };
+
+  async function runSteps(steps: Step[], tok: number) {
+    for (const step of steps) {
+      if (!alive || tok !== epToken) return;
+      await Promise.all(step.map(perform));
+    }
+  }
 
   // ---------- Episode ----------
   async function perform(a: Action): Promise<void> {
@@ -453,14 +722,18 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
     }
     const actor = actors[a.who];
     if ("set" in a) {
-      actor.look = { ...actor.look, ...a.set };
-      commit();
+      if (!held.has(a.who) && motions.get(a.who)?.type !== "ballistic") {
+        actor.look = { ...actor.look, ...a.set };
+        commit();
+      }
       return;
     }
     if ("turn" in a) {
-      const t = a.turn;
-      actor.dir = t === "left" ? -1 : t === "right" ? 1 : actors[t].x >= actor.x ? 1 : -1;
-      commit();
+      if (!held.has(a.who)) {
+        const t = a.turn;
+        actor.dir = t === "left" ? -1 : t === "right" ? 1 : actors[t].x >= actor.x ? 1 : -1;
+        commit();
+      }
       return;
     }
     if ("fx" in a) {
@@ -473,7 +746,15 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
       return;
     }
     if ("say" in a) {
-      await say(a.who, a.say, a.ms);
+      await say(a.who, a.say, a.ms, a.style);
+      return;
+    }
+    if ("ask" in a) {
+      await doAsk(a.who, a.ask);
+      return;
+    }
+    if ("chain" in a) {
+      await doChain(a.who, a.chain);
       return;
     }
     if ("walk" in a) {
@@ -506,7 +787,17 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
     }
     if ("dash" in a) {
       addBurst("puff", actor.x + size() / 2, actor.y + size() * 0.3, 450);
-      await move(a.who, targetX(a.who, a.dash), DASH, null);
+      const gx0 = actor.x;
+      const gx1 = clampX(targetX(a.who, a.dash));
+      for (let i = 1; i <= 5; i++) {
+        later(() => {
+          const key = ++keyCounter;
+          ghosts.push({ key, who: a.who, x: gx0 + ((gx1 - gx0) * i) / 6, y: actor.y, dir: actor.dir, ms: 380 });
+          commit();
+          later(() => { ghosts = ghosts.filter((g) => g.key !== key); commit(); }, 400);
+        }, i * 38);
+      }
+      await move(a.who, gx1, DASH, null);
       return;
     }
     if ("shoot" in a) {
@@ -524,27 +815,28 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
 
   const resetAll = async () => {
     // Pastikan semua aktor kembali ke lantai sebelum episode berikutnya.
-    const airborne = ACTOR_IDS.filter((id) => actors[id].y > 0.5);
+    const airborne = ACTOR_IDS.filter((id) => actors[id].y > 0.5 && !held.has(id) && motions.get(id)?.type !== "ballistic");
     if (airborne.length > 0) await Promise.all(airborne.map((id) => tween(id, { x1: actors[id].x, y1: 0, dur: 450, ease: "in", start: "air", end: "idle", aura: false })));
     projectiles = [];
     beams = [];
     for (const id of ACTOR_IDS) {
+      if (held.has(id) || motions.get(id)?.type === "ballistic") continue;
       const a = actors[id];
       a.look = { ...DEFAULT_LOOK[id] };
       a.bubble = null;
       a.fx = null;
       a.hovering = false;
     }
+    ask = null;
     commit();
   };
 
   async function runEpisode(ep: Episode) {
     lastEpisode = ep.id;
+    const tok = ++epToken;
     host.debug?.(`start ${ep.id}`);
-    for (const step of ep.steps) {
-      if (!alive) return;
-      await Promise.all(step.map(perform));
-    }
+    await runSteps(ep.steps, tok);
+    if (!alive) return;
     await resetAll();
     host.debug?.(`end ${ep.id}`);
   }
@@ -583,6 +875,9 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
   const director = async () => {
     await sleep(2500);
     while (alive) {
+      if (sleeping) { await nap(1000); continue; }
+      const busyActor = ACTOR_IDS.some((id) => held.has(id) || motions.has(id) || host.now() < actors[id].reactUntil);
+      if (busyActor) { await nap(1000); continue; }
       const ep = queued ?? pickEpisode();
       queued = null;
       if (ep) {
@@ -590,15 +885,15 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
         await runEpisode(ep);
         running = false;
       }
-      await nap(rand(5000, 9000));
+      if (!sleeping) await nap(queued ? 600 : rand(5000, 9000));
     }
   };
 
   // ---------- Berkeliaran saat tidak ada episode ----------
   const wander = () => {
     if (!alive) return;
-    if (!running) {
-      const free = ACTOR_IDS.filter((id) => !motions.has(id) && !actors[id].bubble && host.now() >= actors[id].reactUntil);
+    if (!running && !sleeping) {
+      const free = ACTOR_IDS.filter((id) => !motions.has(id) && !held.has(id) && !actors[id].bubble && host.now() >= actors[id].reactUntil);
       if (free.length > 0) {
         const id = pick(free);
         const a = actors[id];
@@ -638,6 +933,120 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
     });
   };
 
+  const throwTracker: Record<ActorId, { count: number; last: number }> = {
+    sigi: { count: 0, last: 0 },
+    mu: { count: 0, last: 0 },
+    quin: { count: 0, last: 0 },
+  };
+
+  const reactCustom = (
+    id: ActorId,
+    text: Text,
+    opts: { face?: MascotFace; pose?: MascotPose; aura?: boolean; ms?: number; kind?: BubbleKind } = {}
+  ) => {
+    const a = actors[id];
+    const ms = opts.ms ?? 2400;
+    a.reactUntil = host.now() + ms + 400;
+    a.look = {
+      ...a.look,
+      face: opts.face ?? a.look.face,
+      pose: opts.pose ?? "idle",
+      aura: opts.aura ?? false,
+    };
+    commit();
+    void say(id, text, ms, opts.kind ?? "say").then(() => {
+      if (!running && !held.has(id) && !motions.has(id)) {
+        a.look = { ...DEFAULT_LOOK[id] };
+        commit();
+      }
+    });
+  };
+
+  const enrageAndScoldUser = async (id: ActorId) => {
+    const a = actors[id];
+    a.reactUntil = host.now() + 8500;
+    a.look = { ...a.look, pose: "charge", face: "angry", aura: true };
+    a.hop++;
+    commit();
+
+    const rants = scripts.throwReaction?.enragedRants?.[id];
+    const rant = rants && rants.length > 0 ? pick(rants) : null;
+    const shoutText = rant?.shout ?? scripts.throwReaction?.enragedShout?.[id];
+    const followUpText = rant?.followUp ?? scripts.throwReaction?.enragedAfter?.[id];
+
+    if (shoutText) {
+      void say(id, shoutText, 3200, "shout");
+    }
+
+    // Stomp feet in fury while shouting
+    await sleep(1000);
+    if (!alive) return;
+    a.hop++;
+    commit();
+
+    await sleep(2200);
+    if (!alive) return;
+
+    // Follow-up scolding / roast
+    if (followUpText) {
+      a.look = { ...a.look, pose: "cast", face: "angry", aura: true };
+      a.hop++;
+      commit();
+      void say(id, followUpText, 4000, "say");
+
+      await sleep(1800);
+      if (!alive) return;
+      a.hop++;
+      commit();
+    }
+
+    later(() => {
+      if (!running && !held.has(id) && !motions.has(id)) {
+        actors[id].look = { ...DEFAULT_LOOK[id] };
+        commit();
+      }
+    }, 4500);
+  };
+
+  onLandedFromThrow = (id: ActorId, peak: number) => {
+    const a = actors[id];
+    const now = host.now();
+    const tracker = throwTracker[id];
+    if (now - tracker.last < 14000) {
+      tracker.count++;
+    } else {
+      tracker.count = 1;
+    }
+    tracker.last = now;
+
+    const count = tracker.count;
+    // If thrown 3 times or slammed with extreme velocity:
+    const isEnraged = count >= 3 || (count >= 2 && peak > 1250);
+
+    if (isEnraged) {
+      tracker.count = 0;
+      void enrageAndScoldUser(id);
+    } else if (count === 2) {
+      // 2nd throw: angry warning!
+      const warningList = scripts.throwReaction?.warning[id];
+      const warningText = warningList && warningList.length > 0 ? pick(warningList) : null;
+      if (warningText) {
+        a.hop++;
+        reactCustom(id, warningText, { face: "angry", pose: "charge", aura: true, ms: 2800, kind: "shout" });
+      }
+    } else {
+      // 1st throw: normal dizzy / complaint
+      const normalList = scripts.throwReaction?.normal[id];
+      const normalText = normalList && normalList.length > 0 ? pick(normalList) : null;
+      const hard = peak > 1000;
+      if (normalText) {
+        reactCustom(id, normalText, { face: hard ? "ko" : "wow", pose: hard ? "sit" : "idle", ms: 2600, kind: "say" });
+      } else {
+        later(() => { if (!running && !held.has(id) && !motions.has(id)) { actors[id].look = { ...DEFAULT_LOOK[id] }; commit(); } }, hard ? 1700 : 900);
+      }
+    }
+  };
+
   const layout = () => {
     for (const id of ACTOR_IDS) {
       const a = actors[id];
@@ -656,6 +1065,10 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
       projectiles = [];
       beams = [];
       bursts = [];
+      ghosts = [];
+      ask = null;
+      sleeping = false;
+      held.clear();
       for (const id of ACTOR_IDS) {
         const a = actors[id];
         a.look = { ...DEFAULT_LOOK[id] };
@@ -673,6 +1086,8 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
     },
     stop() {
       alive = false;
+      sleepers.clear();
+      answerFn = null;
       timers.forEach((t) => host.clearTimeout(t));
       timers.clear();
       motions.clear();
@@ -684,26 +1099,169 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
       if (alive) layout();
     },
     poke(id) {
-      if (!alive) return;
+      if (!alive || sleeping) return;
       const a = actors[id];
+      const now = host.now();
+      a.pokes = a.pokes.filter((t) => now - t < 2600);
+      a.pokes.push(now);
+      const n = a.pokes.length;
       a.hop++;
+      energy = Math.min(100, energy + 6);
       if (busy(id)) {
         // Saat episode berjalan: hanya melompat dan berkilau, tanpa mengganggu skrip.
-        if (!a.fx) showFx(id, "spark", 800);
-        else commit();
+        if (!a.fx) showFx(id, "spark", 800); else commit();
         return;
       }
-      reactNow(id, pick(scripts.poke), pick<MascotFace>(["wow", "happy", "wink", "love"]), 1900);
+      if (n >= 6) {
+        a.pokes = [];
+        showFx(id, "stars", 1800);
+        reactNow(id, pick(scripts.dizzy[id]), "ko", 2200);
+        return;
+      }
+      if (n >= 3) {
+        a.spin++;
+        showFx(id, host.random() < 0.5 ? "pow" : "note", 900);
+        if (id === "quin") {
+          thunderAt(a.x, 600);
+        } else if (id === "mu") {
+          addBurst("blast", a.x, size() * 0.25, 600);
+          pulse("shake");
+        } else if (id === "sigi") {
+          addBurst("splash", a.x, size() * 0.25, 600);
+        }
+        reactNow(id, pick(scripts.combo[id]), pick<MascotFace>(["happy", "cool", "smug"]), 1900);
+        return;
+      }
+      reactNow(id, pick(scripts.poke[id]), pick<MascotFace>(["wow", "happy", "wink", "love"]), 1900);
       const others = ACTOR_IDS.filter((o) => o !== id && !busy(o));
       if (others.length > 0) {
         const o = pick(others);
         later(() => {
-          if (!running && !busy(o)) {
+          if (!running && !busy(o) && !sleeping) {
             actors[o].dir = actors[id].x >= actors[o].x ? 1 : -1;
-            reactNow(o, pick(scripts.pokeReply), "talk", 1900);
+            reactNow(o, pick(scripts.pokeReply[o]), "talk", 1900);
           }
         }, 1500);
       }
+    },
+    hover(id, px) {
+      if (!alive || sleeping || held.has(id) || motions.has(id)) return;
+      const a = actors[id];
+      const c = a.x + size() / 2;
+      if (Math.abs(px - c) > 4) a.dir = px >= c ? 1 : -1;
+      if (!busy(id) && a.look.face === DEFAULT_LOOK[id].face) {
+        a.look = { ...a.look, face: "wow" };
+        a.reactUntil = host.now() + 900;
+        later(() => { if (!running && !busy(id)) { a.look = { ...DEFAULT_LOOK[id] }; commit(); } }, 1000);
+      }
+      commit();
+    },
+    grab(id) {
+      if (!alive || sleeping) return;
+      const a = actors[id];
+      const m = motions.get(id);
+      motions.delete(id);
+      if (m) m.resolve();
+      held.add(id);
+      samples.set(id, []);
+      a.hovering = false;
+      a.look = { ...a.look, pose: "air", face: "wow", aura: false };
+      commit();
+    },
+    drag(id, x, y) {
+      if (!held.has(id)) return;
+      const a = actors[id];
+      a.x = clampX(x);
+      const maxY = Math.max(100, host.height() - size() - 20);
+      a.y = Math.max(0, Math.min(maxY, y));
+      host.onMove(id, a.x, a.y);
+      const list = samples.get(id) ?? [];
+      list.push({ t: host.now(), x: a.x, y: a.y });
+      if (list.length > 6) list.shift();
+      samples.set(id, list);
+    },
+    release(id) {
+      if (!held.has(id)) return;
+      held.delete(id);
+      const a = actors[id];
+      const list = samples.get(id) ?? [];
+      samples.delete(id);
+      let vx = 0, vy = 0;
+      if (list.length >= 2) {
+        const f = list[0], l = list[list.length - 1];
+        const dt = Math.max(16, l.t - f.t) / 1000;
+        vx = Math.max(-1500, Math.min(1500, (l.x - f.x) / dt));
+        vy = Math.max(-1500, Math.min(1800, (l.y - f.y) / dt));
+      }
+      if (!Number.isFinite(vx)) vx = 0;
+      if (!Number.isFinite(vy)) vy = 0;
+      energy = Math.min(100, energy + 8);
+      a.look = { ...a.look, face: "wow", pose: "air" };
+      commit();
+      if (a.y < 0.5 && Math.abs(vy) < 50) {
+        a.look = { ...DEFAULT_LOOK[id], face: "happy" };
+        commit();
+        later(() => { if (!running && !held.has(id)) { a.look = { ...DEFAULT_LOOK[id] }; commit(); } }, 900);
+        return;
+      }
+      setMotion(id, { type: "ballistic", vx, vy, bounces: 0, peak: 0, resolve: () => {} });
+    },
+    clearScreenCrack() {
+      if (screenCrack) {
+        screenCrack = null;
+        commit();
+      }
+    },
+    answer(index) {
+      if (answerFn) answerFn(index);
+    },
+    addEnergy(n) {
+      energy = Math.max(0, Math.min(100, energy + n));
+      commit();
+    },
+    fireUltimate() {
+      if (!alive || energy < 100 || sleeping) return false;
+      energy = 0;
+      queued = scripts.ultimate;
+      if (running) abortEpisode();
+      if (wakeFn) wakeFn();
+      commit();
+      return true;
+    },
+    trigger(name) {
+      if (!alive) return;
+      const ep = scripts.events[name];
+      if (!ep) return;
+      if (name === "sleep") { this.sleep(); return; }
+      if (name === "wake") { this.wake(); return; }
+      if (running && name !== "konami") return;
+      if (sleeping) { sleeping = false; }
+      queued = ep;
+      if (running) abortEpisode();
+      if (wakeFn) wakeFn();
+    },
+    sleep() {
+      if (!alive || sleeping || running) return;
+      sleeping = true;
+      const loop = () => {
+        if (!sleeping || !alive) return;
+        for (const id of ACTOR_IDS) {
+          if (held.has(id) || motions.has(id)) continue;
+          actors[id].look = { ...DEFAULT_LOOK[id], face: "sleep", pose: "sit" };
+        }
+        showFx("sigi", "zzz", 2200);
+        later(loop, 2600);
+      };
+      loop();
+    },
+    wake() {
+      if (!sleeping) return;
+      sleeping = false;
+      for (const id of ACTOR_IDS) actors[id].look = { ...DEFAULT_LOOK[id] };
+      commit();
+      const ep = scripts.events.wake;
+      if (ep) queued = ep;
+      if (wakeFn) wakeFn();
     },
     react(detail) {
       if (!alive || host.now() - lastReact < 2500) return;
@@ -723,6 +1281,7 @@ export function createEngine(host: EngineHost, scripts: Scripts): Engine {
     },
     requestFinale() {
       if (!alive) return;
+      if (sleeping) return;
       queued = scripts.finale;
       if (wakeFn) wakeFn();
     },

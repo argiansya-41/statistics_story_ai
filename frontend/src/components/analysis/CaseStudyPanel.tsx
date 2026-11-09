@@ -25,7 +25,7 @@ export const CaseStudyPanel: React.FC<CaseStudyPanelProps> = ({ contohKasus }) =
           <BookOpen className="w-3.5 h-3.5" />
         </div>
         <span className="font-mono-tech text-xs font-bold text-black uppercase">
-          CONTOH KASUS & ANALOGI DUNIA NYATA (FR-14)
+          CONTOH KASUS & ANALOGI DUNIA NYATA
         </span>
       </div>
 

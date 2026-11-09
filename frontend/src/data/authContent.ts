@@ -35,6 +35,8 @@ export interface AuthCopy {
   submitting: string;
   demoNotice: string;
   backHome: string;
+  goToLogin: string;
+  registeredNotice: string;
   facts: string;
   stage: Record<StageKey, string> & { idleByMode: Record<Mode, string>; successByMode: Record<Mode, string> };
   toggleMascots: string;
@@ -67,7 +69,7 @@ export const authContent: Record<Language, AuthCopy> = {
         headline: ["Mulai ceritakan", "angkamu."],
         art: "Narasi, grafik, dan contoh kasus nyata dalam satu tempat.",
         successTitle: "Akun berhasil dibuat",
-        successBody: "Selamat datang di Statistics Story AI. Kamu sudah bisa mulai.",
+        successBody: "Akunmu telah berhasil didaftarkan. Mengalihkan ke halaman masuk...",
       },
       forgot: {
         title: "Atur ulang kata sandi",
@@ -112,6 +114,8 @@ export const authContent: Record<Language, AuthCopy> = {
     submitting: "MEMERIKSA",
     demoNotice: "MODE DEMO: belum terhubung ke server. Data tidak dikirim atau disimpan.",
     backHome: "KE BERANDA",
+    goToLogin: "MASUK SEKARANG",
+    registeredNotice: "Akun Anda berhasil didaftarkan! Silakan masuk dengan kata sandi Anda.",
     facts: "4 JENIS ANALISIS · 2 BAHASA NARASI · 3 JENIS GRAFIK",
     stage: {
       idle: "",
@@ -159,7 +163,7 @@ export const authContent: Record<Language, AuthCopy> = {
         headline: ["Start telling", "your numbers."],
         art: "Narratives, charts, and real-world examples in one place.",
         successTitle: "Account created",
-        successBody: "Welcome to Statistics Story AI. You're ready to start.",
+        successBody: "Your account has been registered successfully. Redirecting to log in...",
       },
       forgot: {
         title: "Reset password",
@@ -204,6 +208,8 @@ export const authContent: Record<Language, AuthCopy> = {
     submitting: "CHECKING",
     demoNotice: "DEMO MODE: not connected to a server. No data is sent or stored.",
     backHome: "TO HOME",
+    goToLogin: "LOG IN NOW",
+    registeredNotice: "Account registered successfully! Please log in with your password.",
     facts: "4 TYPES OF ANALYSIS · 2 NARRATIVE LANGUAGES · 3 CHART TYPES",
     stage: {
       idle: "",

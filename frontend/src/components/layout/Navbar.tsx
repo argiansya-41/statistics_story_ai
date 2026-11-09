@@ -6,6 +6,7 @@ import { HistogramGlyph } from "../ui/HistogramGlyph";
 import { useTryNow } from "@/lib/tryNow";
 import { content, Language } from "@/data/content";
 import { APP_URL } from "@/data/links";
+import { useSession } from "@/lib/session";
 
 interface NavbarProps {
   lang: Language;
@@ -63,6 +64,8 @@ export const Navbar: React.FC<NavbarProps> = ({ lang, onToggleLang }) => {
   }, [mobileMenuOpen]);
 
   const isLight = navTheme === "light";
+
+  const { isAuthenticated } = useSession();
 
   return (
     <>
@@ -139,17 +142,19 @@ export const Navbar: React.FC<NavbarProps> = ({ lang, onToggleLang }) => {
 
             {/* Action Items (Lang switcher & CTA) */}
             <div className="flex items-stretch divide-x divide-current ml-auto">
-              {/* Login */}
-              <a
-                href="/masuk"
+              {/* Login / Dasbor */}
+              <Link
+                href={isAuthenticated ? "/dasbor" : "/masuk"}
                 className={`hidden sm:flex items-center px-4 md:px-6 font-mono-tech text-xs font-bold tracking-widest uppercase transition-colors border-r ${
                   isLight
                     ? "text-black border-black hover:bg-[#EBEB00] hover:text-black"
                     : "text-white border-white/20 hover:bg-[#EBEB00] hover:text-black"
                 }`}
               >
-                {lang === "id" ? "Masuk" : "Log in"}
-              </a>
+                {isAuthenticated
+                  ? (lang === "id" ? "Dasbor" : "Dashboard")
+                  : (lang === "id" ? "Masuk" : "Log in")}
+              </Link>
 
               {/* Language Toggle */}
               <button
@@ -225,12 +230,15 @@ export const Navbar: React.FC<NavbarProps> = ({ lang, onToggleLang }) => {
         </div>
 
         <div className="pt-8 border-t border-white/15 flex flex-col gap-4">
-          <a
-            href="/masuk"
+          <Link
+            href={isAuthenticated ? "/dasbor" : "/masuk"}
+            onClick={() => setMobileMenuOpen(false)}
             className="w-full text-center py-4 border border-white/40 text-white font-mono-tech text-sm font-bold tracking-widest hover:bg-white hover:text-black transition-colors"
           >
-            {lang === "id" ? "MASUK" : "LOG IN"}
-          </a>
+            {isAuthenticated
+              ? (lang === "id" ? "DASBOR" : "DASHBOARD")
+              : (lang === "id" ? "MASUK" : "LOG IN")}
+          </Link>
           <a
             href={APP_URL}
             onClick={tryNow}

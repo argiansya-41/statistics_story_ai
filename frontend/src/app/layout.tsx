@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter_Tight, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { IMPACT_BOOT_SCRIPT } from "@/lib/impact";
+import { PRELOAD_BOOT_SCRIPT } from "@/lib/preload";
 
 const interTight = Inter_Tight({
   variable: "--font-sans",
@@ -62,7 +64,12 @@ export default function RootLayout({
     <html
       lang="id"
       className={`${interTight.variable} ${jetBrainsMono.variable} scroll-smooth`}
+      suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: IMPACT_BOOT_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: PRELOAD_BOOT_SCRIPT }} />
+      </head>
       <body className="min-h-screen bg-[#000000] text-[#FFFFFF] antialiased selection:bg-[#003BFF] selection:text-white font-sans font-normal">
         {children}
       </body>

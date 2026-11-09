@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { authContent } from "@/data/authContent";
 import type { StageKey } from "@/data/authContent";
 import { POST_AUTH_URL } from "@/data/links";
@@ -12,6 +13,10 @@ import type { FieldKey, Mode, Values } from "@/lib/authValidation";
 import { useLang } from "@/lib/useLang";
 import { AuthStage } from "./AuthStage";
 import { PasswordField, SubmitButton, TextField } from "./AuthFields";
+import { SlapTransition } from "./SlapTransition";
+import type { SlapPhase } from "./SlapTransition";
+import type { MascotCharacter } from "@/components/ui/Mascot";
+import { markImpact } from "@/lib/impact";
 import { PixelWipe } from "./PixelWipe";
 import type { PixelWipeHandle } from "./PixelWipe";
 import { StrengthMeter } from "./StrengthMeter";
@@ -29,6 +34,7 @@ function syncLocation(path: string, title: string) {
 }
 
 export const AuthScreen: React.FC<{ initialMode: Mode }> = ({ initialMode }) => {
+  const router = useRouter();
   const [lang, toggleLang] = useLang();
   const copy = authContent[lang];
 
@@ -40,11 +46,13 @@ export const AuthScreen: React.FC<{ initialMode: Mode }> = ({ initialMode }) => 
   const [showPw, setShowPw] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [formError, setFormError] = useState<AuthError | null>(null);
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
   const [switching, setSwitching] = useState(false);
   const [shakeKey, setShakeKey] = useState(0);
   const [hopKey, setHopKey] = useState(0);
   const [arrival, setArrival] = useState<"fall" | "dizzy" | "done">("fall");
 
+  const [slap, setSlap] = useState<{ victim: 0 | 1 | 2; phase: SlapPhase } | null>(null);
   const wipe = useRef<PixelWipeHandle>(null);
   const busy = useRef(false);
 
@@ -85,13 +93,47 @@ export const AuthScreen: React.FC<{ initialMode: Mode }> = ({ initialMode }) => 
     };
   }, []);
 
-  // Alihkan otomatis setelah berhasil (kecuali mode pemulihan sandi).
+  /** Tamparan: korban acak; tetangga menampar, korban terpental ke kaca; navigasi saat sudah menempel. */
+  const startImpact = () => {
+    setSlap((cur) => cur ?? { victim: Math.floor(Math.random() * 3) as 0 | 1 | 2, phase: "windup" });
+  };
+  const SLAP_CHARS: MascotCharacter[] = ["sigi", "mu", "quin"];
+  const finishImpact = () => {
+    const dest = POST_AUTH_URL || "/dasbor";
+    markImpact(SLAP_CHARS[slap ? slap.victim : 0]);
+    if (dest.startsWith("/")) {
+      router.push(dest);
+    } else {
+      window.location.assign(dest);
+    }
+  };
+
+  const goToLoginAfterRegister = async () => {
+    if (busy.current) return;
+    const regEmail = values.email;
+    setSuccessNotice(copy.registeredNotice);
+    await switchMode("login");
+    setValues((prev) => ({ ...EMPTY_VALUES, email: regEmail }));
+    window.setTimeout(() => {
+      focusEl("password");
+    }, 150);
+  };
+
+  // Alihkan otomatis setelah berhasil (hanya mode login).
+  // Mode register dialihkan ke halaman masuk (/masuk) untuk login eksplisit.
   useEffect(() => {
-    if (status !== "success" || mode === "forgot") return;
-    const targetUrl = POST_AUTH_URL || "/dashboard";
-    const id = window.setTimeout(() => window.location.assign(targetUrl), 1500);
-    return () => window.clearTimeout(id);
-  }, [status, mode]);
+    if (status !== "success") return;
+    if (mode === "login") {
+      router.prefetch(POST_AUTH_URL || "/dasbor");
+      const id = window.setTimeout(() => startImpact(), 700);
+      return () => window.clearTimeout(id);
+    } else if (mode === "register") {
+      const id = window.setTimeout(() => {
+        void goToLoginAfterRegister();
+      }, 1800);
+      return () => window.clearTimeout(id);
+    }
+  }, [status, mode, router]);
 
   // ---------- Pengisian ----------
   const setValue = <K extends FieldKey>(key: K, v: Values[K]) => {
@@ -99,6 +141,9 @@ export const AuthScreen: React.FC<{ initialMode: Mode }> = ({ initialMode }) => 
     if (status === "error") {
       setStatus("idle");
       setFormError(null);
+    }
+    if (successNotice) {
+      setSuccessNotice(null);
     }
   };
   const blur = (f: FieldKey) => {
@@ -186,6 +231,7 @@ export const AuthScreen: React.FC<{ initialMode: Mode }> = ({ initialMode }) => 
         hopKey={hopKey}
         lang={lang}
         arrival={arrival}
+        slap={slap}
       />
 
       <section className="relative flex min-h-screen flex-col bg-[#F4F4F4] text-black bg-blueprint-grid">
@@ -267,13 +313,25 @@ export const AuthScreen: React.FC<{ initialMode: Mode }> = ({ initialMode }) => 
                   <p className="mt-4 font-sans text-base leading-snug text-black/70">{m.successBody}</p>
                   {isDemoMode && <p className="font-mono-tech mt-6 border border-black bg-[#EBEB00] p-3 text-[10px] font-bold tracking-wider">{copy.demoNotice}</p>}
                   <div className="mt-8 flex flex-wrap gap-3">
-                    {mode !== "forgot" ? (
+                    {mode === "login" ? (
                       <Link
-                        href={POST_AUTH_URL || "/dashboard"}
+                        href={POST_AUTH_URL || "/dasbor"}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          startImpact();
+                        }}
                         className="font-mono-tech group inline-flex h-12 items-center gap-3 border border-black bg-[#EBEB00] px-6 text-xs font-bold tracking-widest transition-colors hover:bg-black hover:text-[#EBEB00]"
                       >
-                        Masuk ke Dashboard <span className="transition-transform group-hover:translate-x-1">→</span>
+                        Buka Dasbor <span className="transition-transform group-hover:translate-x-1">→</span>
                       </Link>
+                    ) : mode === "register" ? (
+                      <button
+                        type="button"
+                        onClick={() => void goToLoginAfterRegister()}
+                        className="font-mono-tech group inline-flex h-12 items-center gap-3 border border-black bg-[#003BFF] text-white px-6 text-xs font-bold tracking-widest transition-colors hover:bg-black hover:text-[#003BFF]"
+                      >
+                        {copy.goToLogin} <span className="transition-transform group-hover:translate-x-1">→</span>
+                      </button>
                     ) : (
                       <Link
                         href="/"
@@ -297,6 +355,13 @@ export const AuthScreen: React.FC<{ initialMode: Mode }> = ({ initialMode }) => 
                   </p>
                   <h2 className="font-display text-[clamp(2rem,3.2vw,2.75rem)] font-normal leading-[1.05] tracking-[-0.035em]">{m.title}</h2>
                   <p className="mb-7 mt-3 font-sans text-base leading-snug text-black/70">{m.subtitle}</p>
+
+                  {successNotice && mode === "login" && (
+                    <div role="status" className="mb-5 border border-[#00D084] bg-[#00D084]/15 p-3.5 font-mono-tech text-xs leading-snug text-[#006638] flex items-center gap-2">
+                      <span className="font-bold text-sm">✓</span>
+                      <span>{successNotice}</span>
+                    </div>
+                  )}
 
                   {status === "error" && formError && (
                     <div role="alert" className="auth-shake mb-5 border border-[#FF2E2E] bg-[#FF2E2E]/10 p-3 font-mono-tech text-xs leading-snug text-[#C40000]">
@@ -400,6 +465,7 @@ export const AuthScreen: React.FC<{ initialMode: Mode }> = ({ initialMode }) => 
       </section>
 
       <PixelWipe ref={wipe} />
+      {slap && <SlapTransition victim={slap.victim} character={SLAP_CHARS[slap.victim]} onPhase={(p) => setSlap((s) => (s ? { ...s, phase: p } : s))} onDone={finishImpact} />}
     </main>
   );
 };

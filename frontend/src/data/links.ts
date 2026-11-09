@@ -3,5 +3,5 @@ export const APP_URL = "/masuk";
 
 // Bila aplikasi utama sudah punya alamat sendiri, isi NEXT_PUBLIC_APP_URL di .env.local.
 // Setelah login/daftar berhasil, pengguna dialihkan ke dashboard aplikasi.
-export const POST_AUTH_URL = process.env.NEXT_PUBLIC_APP_URL || "/dashboard";
+export const POST_AUTH_URL = process.env.NEXT_PUBLIC_APP_URL || "/dasbor";
 
