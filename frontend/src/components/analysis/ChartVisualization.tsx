@@ -28,19 +28,43 @@ export const ChartVisualization: React.FC<ChartVisualizationProps> = ({ visualis
   const colors = {
     primary: "#2563EB",       // Royal Blue
     primaryLight: "#3B82F6",  // Blue
-    primaryFill: "rgba(37, 99, 235, 0.65)",
     secondary: "#10B981",     // Emerald Green
     accent: "#F59E0B",        // Amber
     trendline: "#EF4444",     // Crimson Red
-    meanLine: "#DC2626",
+    meanLine: "#DC2626",      // Red Mean
     grid: "#E2E8F0",          // Subtle slate grid
     gridLight: "#F1F5F9",
     axis: "#94A3B8",          // Slate-400
-    text: "#475569",          // Slate-600
+    text: "#64748B",          // Slate-500
     textDark: "#1E293B",      // Slate-800
   };
 
   const barPalette = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899", "#06B6D4"];
+
+  // Helper to extract numeric min and max from bin object or its label string
+  const getBinBounds = (b: { label: string; min?: number; max?: number }) => {
+    if (typeof b.min === "number" && typeof b.max === "number" && !isNaN(b.min) && !isNaN(b.max)) {
+      return { min: b.min, max: b.max };
+    }
+    if (b.label) {
+      const cleaned = b.label.replace(/\s+/g, "");
+      const parts = cleaned.split(/[–\-—]/).map(Number);
+      if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        return { min: parts[0], max: parts[1] };
+      }
+    }
+    return null;
+  };
+
+  // Helper to format bin labels concisely without unnecessary trailing zeroes (e.g. 0–10 instead of 0.00–10.00)
+  const formatBinLabel = (b: { label: string; min?: number; max?: number }) => {
+    const bounds = getBinBounds(b);
+    if (bounds) {
+      const fmt = (n: number) => (Number.isInteger(n) ? n.toString() : n.toFixed(1));
+      return `${fmt(bounds.min)}–${fmt(bounds.max)}`;
+    }
+    return b.label;
+  };
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -103,18 +127,18 @@ export const ChartVisualization: React.FC<ChartVisualizationProps> = ({ visualis
               const rawMax = Math.max(...nilai, 1);
               const maxVal = Math.ceil(rawMax * 1.15);
 
-              // Grid ticks for Y-axis (4 intervals)
-              const yTicks = [0, Math.round(maxVal * 0.25), Math.round(maxVal * 0.5), Math.round(maxVal * 0.75), maxVal];
+              const shouldAngle = kategori.length > 3 || kategori.some((k) => k.length > 7);
 
               const width = 640;
-              const height = 340;
-              const marginLeft = 60;
+              const height = shouldAngle ? 360 : 340;
+              const marginLeft = 65;
               const marginRight = 30;
               const marginTop = 30;
-              const marginBottom = 60;
+              const marginBottom = shouldAngle ? 75 : 55;
               const plotWidth = width - marginLeft - marginRight;
               const plotHeight = height - marginTop - marginBottom;
 
+              const yTicks = [0, Math.round(maxVal * 0.25), Math.round(maxVal * 0.5), Math.round(maxVal * 0.75), maxVal];
               const slotWidth = plotWidth / Math.max(kategori.length, 1);
               const barWidth = Math.min(64, slotWidth * 0.55);
 
@@ -210,21 +234,36 @@ export const ChartVisualization: React.FC<ChartVisualizationProps> = ({ visualis
                               {val}
                             </text>
 
-                            {/* Category label below X axis */}
-                            <text
-                              x={x + barWidth / 2}
-                              y={marginTop + plotHeight + 22}
-                              textAnchor="middle"
-                              fontSize="12"
-                              fontWeight="600"
-                              fill={colors.textDark}
-                            >
-                              {kat}
-                            </text>
+                            {/* Category label below X axis (Angled if multiple or long) */}
+                            {shouldAngle ? (
+                              <g transform={`translate(${x + barWidth / 2}, ${marginTop + plotHeight + 14})`}>
+                                <text
+                                  transform="rotate(-25)"
+                                  textAnchor="end"
+                                  fontSize="11"
+                                  fontWeight="600"
+                                  fill={colors.textDark}
+                                >
+                                  {kat}
+                                </text>
+                              </g>
+                            ) : (
+                              <text
+                                x={x + barWidth / 2}
+                                y={marginTop + plotHeight + 22}
+                                textAnchor="middle"
+                                fontSize="12"
+                                fontWeight="600"
+                                fill={colors.textDark}
+                              >
+                                {kat}
+                              </text>
+                            )}
+
                             {labels[idx] && (
                               <text
                                 x={x + barWidth / 2}
-                                y={marginTop + plotHeight + 38}
+                                y={marginTop + plotHeight + (shouldAngle ? 52 : 38)}
                                 textAnchor="middle"
                                 fontSize="10"
                                 fill={colors.text}
@@ -274,11 +313,11 @@ export const ChartVisualization: React.FC<ChartVisualizationProps> = ({ visualis
               const mean = data_grafik.mean_marker;
 
               const width = 640;
-              const height = 340;
-              const marginLeft = 60;
+              const height = 360;
+              const marginLeft = 65;
               const marginRight = 30;
-              const marginTop = 30;
-              const marginBottom = 65;
+              const marginTop = 36;
+              const marginBottom = 70;
               const plotWidth = width - marginLeft - marginRight;
               const plotHeight = height - marginTop - marginBottom;
 
@@ -341,6 +380,7 @@ export const ChartVisualization: React.FC<ChartVisualizationProps> = ({ visualis
                         const x = marginLeft + idx * binWidth + 1.5;
                         const y = marginTop + plotHeight - barHeight;
                         const w = Math.max(3, binWidth - 3);
+                        const labelText = formatBinLabel(b);
 
                         return (
                           <g key={idx}>
@@ -368,27 +408,40 @@ export const ChartVisualization: React.FC<ChartVisualizationProps> = ({ visualis
                                 {b.count}
                               </text>
                             )}
-                            {/* Bin Range Label */}
-                            <text
-                              x={x + w / 2}
-                              y={marginTop + plotHeight + 18}
-                              textAnchor="middle"
-                              fontSize="10"
-                              fontWeight="500"
-                              fill={colors.text}
-                            >
-                              {b.label}
-                            </text>
+
+                            {/* Bin Range Label: Angled at -30 deg so adjacent labels never collide */}
+                            <g transform={`translate(${x + w / 2}, ${marginTop + plotHeight + 14})`}>
+                              <text
+                                transform="rotate(-30)"
+                                textAnchor="end"
+                                fontSize="10"
+                                fontWeight="500"
+                                fill={colors.text}
+                              >
+                                {labelText}
+                              </text>
+                            </g>
                           </g>
                         );
                       })}
 
-                      {/* Mean Marker Line (Garis Rata-rata) */}
+                      {/* Mean Marker Line (Garis Rata-rata) - Accurately positioned */}
                       {mean !== undefined && bins.length > 0 && (() => {
-                        const minVal = bins[0].min;
-                        const maxVal = bins[bins.length - 1].max;
+                        const firstBounds = getBinBounds(bins[0]);
+                        const lastBounds = getBinBounds(bins[bins.length - 1]);
+
+                        const minVal = firstBounds ? firstBounds.min : 0;
+                        const maxVal = lastBounds ? lastBounds.max : bins.length * 10;
                         const range = maxVal - minVal || 1;
-                        const meanX = marginLeft + ((mean - minVal) / range) * plotWidth;
+
+                        const rawMeanX = marginLeft + ((mean - minVal) / range) * plotWidth;
+                        const meanX = isNaN(rawMeanX)
+                          ? marginLeft + plotWidth / 2
+                          : Math.max(marginLeft + 10, Math.min(marginLeft + plotWidth - 10, rawMeanX));
+
+                        const formattedMean = Number.isInteger(mean) ? mean.toString() : mean.toFixed(2);
+                        const badgeWidth = 84;
+                        const badgeX = Math.max(marginLeft + badgeWidth / 2, Math.min(marginLeft + plotWidth - badgeWidth / 2, meanX));
 
                         return (
                           <g>
@@ -399,27 +452,27 @@ export const ChartVisualization: React.FC<ChartVisualizationProps> = ({ visualis
                               y2={marginTop + plotHeight}
                               stroke={colors.meanLine}
                               strokeWidth="2"
-                              strokeDasharray="5 3"
+                              strokeDasharray="4 3"
                             />
                             <rect
-                              x={meanX - 35}
-                              y={marginTop - 22}
-                              width="70"
-                              height="18"
-                              rx="4"
+                              x={badgeX - badgeWidth / 2}
+                              y={marginTop - 26}
+                              width={badgeWidth}
+                              height="20"
+                              rx="5"
                               fill="#FEF2F2"
                               stroke={colors.meanLine}
-                              strokeWidth="1"
+                              strokeWidth="1.2"
                             />
                             <text
-                              x={meanX}
-                              y={marginTop - 10}
+                              x={badgeX}
+                              y={marginTop - 12}
                               textAnchor="middle"
                               fontSize="10"
                               fontWeight="700"
                               fill={colors.meanLine}
                             >
-                              Mean: {mean}
+                              Mean: {formattedMean}
                             </text>
                           </g>
                         );
@@ -468,17 +521,15 @@ export const ChartVisualization: React.FC<ChartVisualizationProps> = ({ visualis
               const minY = Math.min(...ys);
               const maxY = Math.max(...ys);
 
-              // Standard dimensions
               const width = 640;
               const height = 360;
-              const marginLeft = 60;
+              const marginLeft = 65;
               const marginRight = 30;
               const marginTop = 30;
               const marginBottom = 60;
               const plotWidth = width - marginLeft - marginRight;
               const plotHeight = height - marginTop - marginBottom;
 
-              // Generous padding so dots on the boundary don't get clipped
               const spanX = maxX - minX || 1;
               const spanY = maxY - minY || 1;
               const padX = spanX * 0.05;
@@ -489,25 +540,30 @@ export const ChartVisualization: React.FC<ChartVisualizationProps> = ({ visualis
               const domainMinY = Math.floor(minY - padY);
               const domainMaxY = Math.ceil(maxY + padY);
 
-              const rangeX = domainMaxX - domainMinX;
-              const rangeY = domainMaxY - domainMinY;
+              const rangeX = domainMaxX - domainMinX || 1;
+              const rangeY = domainMaxY - domainMinY || 1;
 
               const mapX = (xVal: number) => marginLeft + ((xVal - domainMinX) / rangeX) * plotWidth;
               const mapY = (yVal: number) => marginTop + plotHeight - ((yVal - domainMinY) / rangeY) * plotHeight;
 
-              // 5 Clean Ticks for X and Y
-              const xTicks = Array.from({ length: 6 }, (_, i) =>
-                Math.round(domainMinX + (i / 5) * rangeX)
-              );
-              const yTicks = Array.from({ length: 6 }, (_, i) =>
-                Math.round(domainMinY + (i / 5) * rangeY)
-              );
+              // Generate clean, deduplicated tick marks
+              const generateTicks = (min: number, max: number, count = 5) => {
+                const step = (max - min) / count || 1;
+                const ticks: number[] = [];
+                for (let i = 0; i <= count; i++) {
+                  const val = min + i * step;
+                  ticks.push(Math.abs(val) >= 10 ? Math.round(val) : Number(val.toFixed(1)));
+                }
+                return Array.from(new Set(ticks));
+              };
+
+              const xTicks = generateTicks(domainMinX, domainMaxX, 5);
+              const yTicks = generateTicks(domainMinY, domainMaxY, 5);
 
               const line = data_grafik.line;
               const lineStart = line ? { x: mapX(line.x1), y: mapY(line.y1) } : null;
               const lineEnd = line ? { x: mapX(line.x2), y: mapY(line.y2) } : null;
 
-              // Dynamic dot radius based on point density
               const dotRadius = points.length > 250 ? 3.5 : points.length > 100 ? 4.5 : 5.5;
 
               return (

@@ -940,6 +940,8 @@ def build_visualisasi(item: Analysis, result: dict) -> list[dict]:
                     {
                         "label": f"{edges[i]:.2f}–{edges[i + 1]:.2f}",
                         "count": int(counts[i]),
+                        "min": float(edges[i]),
+                        "max": float(edges[i + 1]),
                     }
                     for i in range(len(counts))
                 ]
