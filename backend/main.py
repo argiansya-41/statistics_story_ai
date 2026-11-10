@@ -1,10 +1,12 @@
 from google import genai
+from google.genai import types
 from groq import Groq
 import os
 import io
 import json
 import math
 import re
+import base64
 from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 from typing import Generator, Any
@@ -162,6 +164,116 @@ def generate_with_ai(prompt: str) -> str:
             "API AI belum dikonfigurasi. Isi GEMINI_API_KEY atau GROQ_API_KEY."
         )
     raise RuntimeError("Semua layanan AI gagal. " + " | ".join(errors))
+
+
+def extract_table_from_image(image_bytes: bytes, mime_type: str = "image/png") -> list[dict]:
+    """
+    Ekstrak data tabel dari gambar menggunakan Gemini Vision atau Groq Vision.
+    Mengembalikan list of dicts (format baris data tabular).
+    """
+    g_client, q_client, gem_key, groq_key, gem_model, groq_model = get_ai_config()
+
+    prompt = (
+        "Kamu adalah pakar OCR dan ekstraksi data statistik presisi tinggi. "
+        "Periksa gambar ini secara cermat. Gambar ini menampilkan tabel data atau angka untuk analisis statistik. "
+        "Tugasmu adalah mengekstrak seluruh baris dan kolom data tabel dari gambar ini menjadi JSON array of objects yang valid. "
+        "Setiap object mewakili 1 baris data, dengan key adalah nama kolom/header dan value adalah nilai sel "
+        "(konversi menjadi angka float atau int jika berupa angka, atau string jika teks/kategori). "
+        "DILARANG menambahkan teks pengantar atau penutup apapun. "
+        "Kembalikan HANYA JSON array valid seperti contoh berikut: "
+        '[{"kolom1": 10.5, "kolom2": 20}, {"kolom1": 12.0, "kolom2": 22}]'
+    )
+
+    raw_text = None
+    last_err = None
+
+    # 1. Coba Gemini Vision
+    if g_client:
+        candidate_models = [gem_model, "gemini-2.5-flash", "gemini-3.8-flash", "gemini-flash-latest"]
+        for m in candidate_models:
+            try:
+                part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+                resp = g_client.models.generate_content(
+                    model=m,
+                    contents=[part, prompt],
+                )
+                if resp and resp.text:
+                    raw_text = resp.text.strip()
+                    break
+            except Exception as e:
+                last_err = e
+                continue
+
+    # 2. Coba Groq Vision jika Gemini belum menghasilkan teks
+    if not raw_text and q_client:
+        b64_img = base64.b64encode(image_bytes).decode("utf-8")
+        vision_models = ["meta-llama/llama-4-scout-vision", "llama-3.2-11b-vision-preview", "llama-3.2-90b-vision-preview"]
+        for vm in vision_models:
+            try:
+                resp = q_client.chat.completions.create(
+                    model=vm,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:{mime_type};base64,{b64_img}"},
+                                },
+                            ],
+                        }
+                    ],
+                    temperature=0.1,
+                    max_completion_tokens=2500,
+                )
+                if resp.choices and resp.choices[0].message.content:
+                    raw_text = resp.choices[0].message.content.strip()
+                    break
+            except Exception as e:
+                last_err = e
+                continue
+
+    if not raw_text:
+        if last_err:
+            raise RuntimeError(f"Gagal mengekstrak tabel dari gambar: {last_err}")
+        raise RuntimeError("Layanan AI Vision belum siap. Periksa GEMINI_API_KEY atau GROQ_API_KEY.")
+
+    # Parsing JSON dari teks hasil AI
+    text_clean = re.sub(r"^```(?:json)?\s*", "", raw_text, flags=re.MULTILINE)
+    text_clean = re.sub(r"\s*```$", "", text_clean, flags=re.MULTILINE).strip()
+
+    # Cari blok JSON array [...]
+    match = re.search(r"\[\s*\{.*\}\s*\]", text_clean, re.DOTALL)
+    if match:
+        text_clean = match.group(0)
+
+    try:
+        data = json.loads(text_clean)
+        if isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
+            cleaned_rows = []
+            for row in data:
+                cleaned_row = {}
+                for k, v in row.items():
+                    k_str = str(k).strip()
+                    if v is not None:
+                        if isinstance(v, (int, float)):
+                            cleaned_row[k_str] = v
+                        else:
+                            try:
+                                num = float(str(v).replace(",", ".").strip())
+                                cleaned_row[k_str] = int(num) if num.is_integer() else num
+                            except ValueError:
+                                cleaned_row[k_str] = str(v).strip()
+                    else:
+                        cleaned_row[k_str] = ""
+                cleaned_rows.append(cleaned_row)
+            return cleaned_rows
+    except Exception as parse_err:
+        raise ValueError(f"Hasil ekstraksi gambar bukan format JSON tabel yang valid: {parse_err}")
+
+    raise ValueError("Tidak ada data baris tabel yang berhasil diekstrak dari gambar.")
+
 
 
 def make_contoh_kasus(result: dict, lang: str = "id") -> list[str]:
@@ -2047,10 +2159,15 @@ async def upload_dataset(
                         parsed if isinstance(parsed, list)
                         else parsed.get("data", [])
                     )
+                elif extension in ("png", "jpg", "jpeg", "webp"):
+                    img_mime = "image/jpeg" if extension in ("jpg", "jpeg") else f"image/{extension}"
+                    extracted_rows = extract_table_from_image(content, img_mime)
+                    df = pd.DataFrame(extracted_rows)
+                    format_data = "image"
                 else:
                     raise HTTPException(
                         status_code=400,
-                        detail="Format file yang didukung: CSV, XLSX, XLS, JSON.",
+                        detail="Format file yang didukung: CSV, XLSX, XLS, JSON, PNG, JPG, JPEG, WEBP.",
                     )
 
                 if len(df) > 10000:
@@ -2129,6 +2246,80 @@ async def upload_dataset(
     db.refresh(item)
 
     return detail_analisis_frontend(item, db)
+
+
+@app.post("/api/v1/extract-image")
+async def extract_image_endpoint(
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    """
+    Ekstrak data tabel dari file gambar (PNG, JPG, JPEG, WEBP) menjadi dataset tabel terstruktur.
+    """
+    content_type = request.headers.get("content-type", "")
+    if "multipart/form-data" not in content_type:
+        raise HTTPException(
+            status_code=400, detail="Permintaan harus dalam format multipart/form-data."
+        )
+
+    form = await request.form()
+    uploaded = form.get("file")
+    if uploaded is None or not hasattr(uploaded, "read"):
+        raise HTTPException(status_code=400, detail="File gambar belum diunggah.")
+
+    filename = getattr(uploaded, "filename", None) or "gambar.png"
+    content = await uploaded.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="File gambar kosong.")
+
+    extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if extension not in ("png", "jpg", "jpeg", "webp"):
+        raise HTTPException(
+            status_code=400,
+            detail="Format gambar yang didukung: PNG, JPG, JPEG, WEBP.",
+        )
+
+    mime_type = "image/jpeg" if extension in ("jpg", "jpeg") else f"image/{extension}"
+
+    try:
+        rows = extract_table_from_image(content, mime_type)
+        if not rows:
+            raise HTTPException(
+                status_code=400,
+                detail="Tabel data tidak ditemukan di dalam gambar.",
+            )
+
+        df = pd.DataFrame(rows)
+        headers = list(df.columns)
+        kolom_info = []
+        for col in headers:
+            col_series = df[col]
+            num_count = pd.to_numeric(col_series, errors="coerce").notnull().sum()
+            is_num = (num_count / len(col_series)) >= 0.7 if len(col_series) > 0 else False
+            samples = [str(x) for x in col_series.dropna().head(3).tolist()]
+            kolom_info.append({
+                "name": str(col),
+                "type": "numeric" if is_num else "categorical",
+                "sampleValues": samples,
+                "distinctCount": int(col_series.nunique()),
+            })
+
+        dataset_name = filename.rsplit(".", 1)[0]
+        return {
+            "success": True,
+            "nama_file": filename,
+            "nama_dataset": dataset_name,
+            "format_data": "image",
+            "sumber_input": "mentah",
+            "total_baris": len(df),
+            "total_kolom": len(headers),
+            "kolom": headers,
+            "kolom_info": kolom_info,
+            "preview_baris": rows[:10],
+            "data_mentah": rows,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @app.put("/api/v1/analyses/{analysis_id}/config")

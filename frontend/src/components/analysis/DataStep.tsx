@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { Mascot } from "@/components/ui/Mascot";
 import { parseCSVText, parseUploadedFile, analyzeColumns } from "@/lib/api/fileParser";
+import { api } from "@/lib/api/analysesApi";
 import type { DatasetSummary, AnalysisType } from "@/lib/types/analysis";
 import {
   Upload,
@@ -12,6 +13,9 @@ import {
   CheckCircle2,
   Lock,
   ArrowRight,
+  Image as ImageIcon,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 
 interface DataStepProps {
@@ -34,19 +38,20 @@ export const DataStep: React.FC<DataStepProps> = ({
     initialDataset?.sumber_input === "siap_pakai" ? "siap_pakai" : "mentah"
   );
 
-  // Tab di dalam data mentah: 'ketik' vs 'unggah'
-  const [rawTab, setRawTab] = useState<"ketik" | "unggah">("unggah");
+  // Tab di dalam data mentah: 'unggah' vs 'gambar' vs 'ketik'
+  const [rawTab, setRawTab] = useState<"ketik" | "unggah" | "gambar">("unggah");
 
   // State Ketik / Tempel
   const [pastedText, setPastedText] = useState("");
   const [pastedDatasetName, setPastedDatasetName] = useState("Dataset Tempel");
 
-  // State Unggah Berkas
+  // State Unggah Berkas & Ekstraksi Gambar
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadErrorCode, setUploadErrorCode] = useState<number | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [isExtractingImage, setIsExtractingImage] = useState(false);
 
   // State Ringkasan Data (Tersimpan atau Baru di-parse)
   const [currentSummary, setCurrentSummary] = useState<DatasetSummary | null>(initialDataset || null);
@@ -193,31 +198,67 @@ Kelas_B,69`;
     }
   };
 
-  // ========== Handler Unggah Berkas ==========
+  // ========== Handler Unggah Berkas & Ekstraksi Gambar ==========
   const handleFileProcess = async (file: File) => {
     setUploadError(null);
     setUploadErrorCode(null);
     setUploadSuccess(false);
     setValidationError(null);
 
-    // 1. Ekstensi
+    // 1. Ekstensi & Tipe
     const name = file.name.toLowerCase();
-    const isSupported = name.endsWith(".csv") || name.endsWith(".xlsx") || name.endsWith(".xls");
-    if (!isSupported) {
-      setUploadError("Format berkas tidak didukung. Harap gunakan .csv, .xlsx, atau .xls.");
+    const isSpreadsheet = name.endsWith(".csv") || name.endsWith(".xlsx") || name.endsWith(".xls");
+    const isImage =
+      name.endsWith(".png") ||
+      name.endsWith(".jpg") ||
+      name.endsWith(".jpeg") ||
+      name.endsWith(".webp") ||
+      file.type.startsWith("image/");
+
+    if (!isSpreadsheet && !isImage) {
+      setUploadError(
+        "Format berkas tidak didukung. Harap gunakan file CSV, Excel (.xlsx, .xls), atau Gambar (.png, .jpg, .jpeg, .webp)."
+      );
       setUploadErrorCode(415);
       return;
     }
 
-    // 2. Ukuran (maks 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      setUploadError(`Ukuran berkas (${(file.size / (1024 * 1024)).toFixed(2)} MB) melebihi batas 5 MB.`);
+    // 2. Ukuran (maks 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError(`Ukuran berkas (${(file.size / (1024 * 1024)).toFixed(2)} MB) melebihi batas 10 MB.`);
       setUploadErrorCode(413);
       return;
     }
 
+    setSelectedFile(file);
+
+    // 3. Jika berkas adalah Gambar, ekstraksi tabel via AI Vision
+    if (isImage) {
+      setIsExtractingImage(true);
+      try {
+        const summary = await api.extractImage(file);
+        summary.preview_baris = (summary.data_mentah || []).slice(0, 8);
+        setCurrentSummary(summary);
+        setUploadSuccess(true);
+        await onSaveDataset(summary, file);
+      } catch (err: any) {
+        setUploadError(
+          err.message ||
+            "Gagal mengekstrak tabel data dari gambar. Pastikan gambar memuat baris & kolom data yang terbaca jelas."
+        );
+        setUploadErrorCode(422);
+        setValidationError({
+          message: err.message || "Tabel dalam gambar tidak dapat diekstrak oleh AI Vision",
+          fields: ["format_berkas"],
+        });
+      } finally {
+        setIsExtractingImage(false);
+      }
+      return;
+    }
+
+    // 4. Jika berkas adalah CSV atau Excel
     try {
-      setSelectedFile(file);
       const summary = await parseUploadedFile(file);
 
       // Hitung sel kosong
@@ -536,11 +577,11 @@ Kelas_B,69`;
               1. DATA MENTAH (RAW DATASET)
             </h3>
             <p className="font-sans text-xs text-black/70 leading-relaxed">
-              Ketik, tempel tabel, atau unggah file CSV / Excel (.xlsx, .xls). Sistem akan memeriksa tipe kolom numerik dan menghitung statistik secara otomatis.
+              Ketik, tempel tabel, atau unggah file CSV / Excel (.xlsx, .xls) serta gambar tabel (.png, .jpg). Sistem akan mengekstrak tabel dan memeriksa tipe data numerik secara otomatis.
             </p>
           </div>
           <div className="font-mono-tech text-[10px] text-black/50 border-t border-black/10 pt-2 mt-4">
-            Maks. 5 MB · 10.000 Baris · Deteksi Delimiter Otomatis
+            Maks. 10 MB · CSV / Excel & Ekstraksi Gambar AI Vision Otomatis
           </div>
         </button>
 
@@ -584,23 +625,36 @@ Kelas_B,69`;
          ========================================================================= */}
       {!isLocked && sourceMode === "mentah" && (
         <div className="border border-black bg-white p-6 shadow-[6px_6px_0px_#000000] space-y-6">
-          {/* Dua Tab: Unggah Berkas & Ketik/Tempel */}
+          {/* Tiga Tab: Unggah Berkas, Unggah Gambar Tabel (AI Vision), & Ketik/Tempel */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black pb-4">
-            <div className="flex border border-black bg-[#F4F4F4] divide-x divide-black font-mono-tech text-xs font-bold">
+            <div className="flex flex-wrap border border-black bg-[#F4F4F4] divide-x divide-black font-mono-tech text-xs font-bold">
               <button
                 type="button"
                 onClick={() => setRawTab("unggah")}
-                className={`px-5 py-2 flex items-center gap-2 transition-colors ${
+                className={`px-4 py-2 flex items-center gap-2 transition-colors ${
                   rawTab === "unggah" ? "bg-black text-white" : "hover:bg-[#EBEB00] text-black"
                 }`}
               >
                 <Upload className="w-3.5 h-3.5" />
-                <span>Unggah Berkas (.csv, .xlsx, .xls)</span>
+                <span>Unggah Berkas (CSV / Excel)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setRawTab("gambar")}
+                className={`px-4 py-2 flex items-center gap-2 transition-colors ${
+                  rawTab === "gambar" ? "bg-black text-white" : "hover:bg-[#EBEB00] text-black"
+                }`}
+              >
+                <ImageIcon className="w-3.5 h-3.5 text-[#003BFF]" />
+                <span className="flex items-center gap-1">
+                  <span>Upload Gambar Tabel</span>
+                  <span className="bg-[#EBEB00] text-black text-[9px] px-1 py-0.2 border border-black">AI VISION</span>
+                </span>
               </button>
               <button
                 type="button"
                 onClick={() => setRawTab("ketik")}
-                className={`px-5 py-2 flex items-center gap-2 transition-colors ${
+                className={`px-4 py-2 flex items-center gap-2 transition-colors ${
                   rawTab === "ketik" ? "bg-black text-white" : "hover:bg-[#EBEB00] text-black"
                 }`}
               >
@@ -629,7 +683,7 @@ Kelas_B,69`;
             </div>
           </div>
 
-          {/* TAB UNGGAH BERKAS DENGAN MASKOT REAKTIF (FR-03, FR-04, Bagian 5) */}
+          {/* TAB 1: UNGGAH BERKAS CSV / EXCEL (JUGA BISA MENERIMA GAMBAR) */}
           {rawTab === "unggah" && (
             <div className="space-y-4">
               <div
@@ -642,12 +696,16 @@ Kelas_B,69`;
                     ? "border-[#003BFF] bg-[#003BFF]/10 scale-[1.01]"
                     : uploadErrorCode
                     ? "border-[#FF2E2E] bg-[#FF2E2E]/5"
+                    : isExtractingImage
+                    ? "border-[#003BFF] bg-[#003BFF]/5 animate-pulse"
                     : "border-black bg-[#FBFBFB] hover:bg-white"
                 }`}
               >
-                {/* Maskot Reaktif Sesuai Status Drag & Drop */}
+                {/* Maskot Reaktif */}
                 <div className="mb-4">
-                  {dragActive ? (
+                  {isExtractingImage ? (
+                    <Mascot character="sigi" pose="charge" face="wow" className="w-16 h-16 mx-auto animate-bounce" interactive />
+                  ) : dragActive ? (
                     <Mascot character="sigi" pose="charge" face="wow" className="w-16 h-16 mx-auto animate-bounce" interactive />
                   ) : uploadErrorCode === 413 || uploadErrorCode === 415 ? (
                     <Mascot character="mu" pose="cover" face="hurt" className="w-16 h-16 mx-auto" interactive />
@@ -660,35 +718,139 @@ Kelas_B,69`;
 
                 <div className="space-y-2">
                   <div className="font-mono-tech text-sm font-bold text-black uppercase">
-                    {dragActive
+                    {isExtractingImage
+                      ? "AI Vision Sedang Mengekstrak Data Tabel dari Berkas..."
+                      : dragActive
                       ? "Lepaskan berkas di sini sekarang!"
                       : uploadSuccess
                       ? `Berkas "${selectedFile?.name}" Berhasil Dibaca!`
-                      : "Tarik & Lepas Berkas CSV atau Excel di Sini"}
+                      : "Tarik & Lepas Berkas CSV, Excel, atau Gambar di Sini"}
                   </div>
                   <p className="font-sans text-xs text-black/60 max-w-md mx-auto">
-                    Mendukung format .CSV, .XLSX, dan .XLS hingga 5 MB (maksimal 10.000 baris data).
+                    {isExtractingImage
+                      ? "Harap tunggu sejenak, model AI Vision sedang mendeteksi baris, kolom, dan angka secara otomatis."
+                      : "Mendukung format .CSV, .XLSX, .XLS, serta Gambar (.PNG, .JPG, .JPEG, .WEBP) hingga 10 MB."}
                   </p>
                 </div>
 
-                <div className="mt-5">
-                  <label className="inline-flex items-center gap-2 px-5 py-2.5 bg-black text-white font-mono-tech text-xs font-bold border border-black hover:bg-[#003BFF] transition-colors cursor-pointer shadow-[3px_3px_0px_#000000]">
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Pilih Berkas dari Komputer</span>
-                    <input
-                      type="file"
-                      accept=".csv, .xlsx, .xls"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          handleFileProcess(e.target.files[0]);
-                        }
-                      }}
-                      className="hidden"
-                    />
-                  </label>
+                {!isExtractingImage && (
+                  <div className="mt-5">
+                    <label className="inline-flex items-center gap-2 px-5 py-2.5 bg-black text-white font-mono-tech text-xs font-bold border border-black hover:bg-[#003BFF] transition-colors cursor-pointer shadow-[3px_3px_0px_#000000]">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Pilih Berkas dari Komputer</span>
+                      <input
+                        type="file"
+                        accept=".csv, .xlsx, .xls, .png, .jpg, .jpeg, .webp, image/*"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            handleFileProcess(e.target.files[0]);
+                          }
+                        }}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                )}
+
+                {isExtractingImage && (
+                  <div className="mt-5 flex items-center justify-center gap-2 font-mono-tech text-xs text-[#003BFF] font-bold">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Memproses OCR & Ekstraksi Multimodal...</span>
+                  </div>
+                )}
+
+                {/* Pesan Kesalahan */}
+                {uploadError && (
+                  <div className="mt-4 border border-[#FF2E2E] bg-[#FF2E2E]/10 p-3 font-mono-tech text-xs text-[#C40000] inline-flex items-center gap-2 max-w-lg mx-auto">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>{uploadError}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: UNGGAH GAMBAR TABEL (AI VISION) */}
+          {rawTab === "gambar" && (
+            <div className="space-y-4">
+              <div
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+                className={`border-2 border-dashed p-8 md:p-12 text-center transition-all ${
+                  dragActive
+                    ? "border-[#003BFF] bg-[#003BFF]/10 scale-[1.01]"
+                    : uploadErrorCode
+                    ? "border-[#FF2E2E] bg-[#FF2E2E]/5"
+                    : isExtractingImage
+                    ? "border-[#003BFF] bg-[#003BFF]/5 animate-pulse"
+                    : "border-black bg-[#FBFBFB] hover:bg-white"
+                }`}
+              >
+                {/* Maskot Reaktif */}
+                <div className="mb-4">
+                  {isExtractingImage ? (
+                    <Mascot character="sigi" pose="charge" face="wow" className="w-16 h-16 mx-auto animate-bounce" interactive />
+                  ) : dragActive ? (
+                    <Mascot character="sigi" pose="charge" face="wow" className="w-16 h-16 mx-auto animate-bounce" interactive />
+                  ) : uploadErrorCode === 413 || uploadErrorCode === 415 ? (
+                    <Mascot character="mu" pose="cover" face="hurt" className="w-16 h-16 mx-auto" interactive />
+                  ) : uploadSuccess && currentSummary?.format_data === "image" ? (
+                    <Mascot character="sigi" pose="cheer" face="happy" className="w-16 h-16 mx-auto" interactive />
+                  ) : (
+                    <Mascot character="sigi" pose="idle" face="smile" className="w-16 h-16 mx-auto" interactive />
+                  )}
                 </div>
 
-                {/* Pesan Kesalahan 413 / 415 Tanpa Menghapus Berkas Lain */}
+                <div className="space-y-2">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#EBEB00] border border-black font-mono-tech text-[10px] font-bold uppercase mb-1">
+                    <Sparkles className="w-3 h-3 text-[#003BFF]" />
+                    <span>EKSTRAKSI TABEL OTOMATIS BERBASIS AI VISION</span>
+                  </div>
+                  <div className="font-mono-tech text-sm font-bold text-black uppercase">
+                    {isExtractingImage
+                      ? "AI Vision Sedang Mengekstrak Data Tabel dari Gambar..."
+                      : dragActive
+                      ? "Lepaskan gambar tabel di sini!"
+                      : uploadSuccess && currentSummary?.format_data === "image"
+                      ? `Tabel dari Gambar "${selectedFile?.name}" Berhasil Diekstrak!`
+                      : "Tarik & Lepas Foto atau Screenshot Tabel di Sini"}
+                  </div>
+                  <p className="font-sans text-xs text-black/60 max-w-lg mx-auto">
+                    {isExtractingImage
+                      ? "Menganalisis orientasi baris, mengenali header kolom, dan mengubah sel angka menjadi format numerik terstruktur..."
+                      : "Unggah foto hasil cetak, tangkapan layar (screenshot), atau gambar tabel dokumen (.png, .jpg, .jpeg, .webp). AI akan mengubahnya menjadi dataset siap olah."}
+                  </p>
+                </div>
+
+                {!isExtractingImage && (
+                  <div className="mt-5">
+                    <label className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#003BFF] text-white font-mono-tech text-xs font-bold border border-black hover:bg-black transition-colors cursor-pointer shadow-[3px_3px_0px_#000000]">
+                      <ImageIcon className="w-4 h-4 text-[#EBEB00]" />
+                      <span>Pilih Gambar Tabel dari Komputer</span>
+                      <input
+                        type="file"
+                        accept=".png, .jpg, .jpeg, .webp, image/*"
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            handleFileProcess(e.target.files[0]);
+                          }
+                        }}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                )}
+
+                {isExtractingImage && (
+                  <div className="mt-5 flex items-center justify-center gap-2 font-mono-tech text-xs text-[#003BFF] font-bold">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>AI Vision sedang membaca tabel & mengonversi angka...</span>
+                  </div>
+                )}
+
+                {/* Pesan Kesalahan */}
                 {uploadError && (
                   <div className="mt-4 border border-[#FF2E2E] bg-[#FF2E2E]/10 p-3 font-mono-tech text-xs text-[#C40000] inline-flex items-center gap-2 max-w-lg mx-auto">
                     <AlertTriangle className="w-4 h-4 shrink-0" />
@@ -1099,9 +1261,16 @@ Kelas_B,69`;
               </span>
             </div>
             <div className="flex items-center gap-2 font-mono-tech text-xs">
-              <span className="px-2 py-0.5 border border-black bg-white font-bold">
-                FORMAT: {currentSummary.format_data.toUpperCase()}
-              </span>
+              {currentSummary.format_data === "image" ? (
+                <span className="px-2 py-0.5 border border-black bg-[#EBEB00] text-black font-bold flex items-center gap-1.5 shadow-[2px_2px_0px_#000000]">
+                  <Sparkles className="w-3.5 h-3.5 text-[#003BFF]" />
+                  <span>FORMAT: GAMBAR (AI VISION)</span>
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 border border-black bg-white font-bold">
+                  FORMAT: {currentSummary.format_data.toUpperCase()}
+                </span>
+              )}
               <span className="px-2 py-0.5 border border-black bg-white font-bold text-[#003BFF]">
                 SUMBER: {currentSummary.sumber_input.toUpperCase()}
               </span>

@@ -34,11 +34,13 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen>
       TextEditingController(text: 'Analisis Baru');
 
   // Step 1: Data State
-  String _inputMode = 'sample'; // 'sample', 'file'
+  String _inputMode = 'sample'; // 'sample', 'file', 'image'
   String? _pickedFileName;
   List<String> _columns = [];
   List<Map<String, dynamic>> _rows = [];
   String? _dataValidationError;
+  bool _isExtractingImage = false;
+  bool _isFromImage = false;
 
   // Step 2: Config State
   late String _selectedAnalysis; // 'deskriptif', 'uji_t', 'korelasi', 'regresi'
@@ -327,6 +329,7 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen>
   void _loadSampleData() {
     setState(() {
       _inputMode = 'sample';
+      _isFromImage = false;
       _pickedFileName = 'sampel_prestasi_akademik.csv';
       _columns = ['Jam_Belajar', 'Nilai_Ujian', 'Kehadiran', 'Kategori'];
       _rows = [
@@ -344,11 +347,15 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen>
     });
   }
 
-  Future<void> _pickFile() async {
+  Future<void> _pickFile({bool forceImage = false}) async {
     try {
+      final allowed = forceImage
+          ? ['png', 'jpg', 'jpeg', 'webp']
+          : ['csv', 'xlsx', 'xls', 'png', 'jpg', 'jpeg', 'webp'];
+
       final files = await FilePicker.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['csv', 'xlsx', 'xls'],
+        allowedExtensions: allowed,
       );
 
       if (files.isNotEmpty) {
@@ -364,11 +371,21 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen>
         _bounceCtrl.forward().then((_) => _bounceCtrl.reverse());
         HapticFeedback.lightImpact();
 
-        if (name.endsWith('.csv')) {
+        final lower = name.toLowerCase();
+        final isImage = lower.endsWith('.png') ||
+            lower.endsWith('.jpg') ||
+            lower.endsWith('.jpeg') ||
+            lower.endsWith('.webp');
+
+        if (isImage) {
+          await _processImageBytes(Uint8List.fromList(bytes), name);
+        } else if (name.endsWith('.csv')) {
+          _isFromImage = false;
           _parseCsvBytes(bytes, name);
         } else {
           setState(() {
             _inputMode = 'file';
+            _isFromImage = false;
             _pickedFileName = name;
             _columns = ['(File Excel terdeteksi)'];
             _rows = [];
@@ -377,7 +394,63 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen>
         }
       }
     } catch (e) {
-      setState(() => _dataValidationError = 'Error memilih file: $e');
+      setState(() => _dataValidationError = 'Error memilih berkas: $e');
+    }
+  }
+
+  Future<void> _processImageBytes(Uint8List bytes, String filename) async {
+    setState(() {
+      _isExtractingImage = true;
+      _dataValidationError = null;
+    });
+
+    try {
+      final result = await ApiService().extractTableFromImage(
+        fileBytes: bytes,
+        filename: filename,
+      );
+
+      final rawCols = result['kolom'] as List<dynamic>? ?? [];
+      final cols = rawCols.map((e) => e.toString()).toList();
+      final rawData = result['data_mentah'] as List<dynamic>? ?? [];
+      final parsedRows = rawData
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+
+      if (parsedRows.isEmpty) {
+        throw Exception('Tidak ada baris data tabel yang berhasil diekstrak dari gambar.');
+      }
+
+      setState(() {
+        _inputMode = 'image';
+        _isFromImage = true;
+        _pickedFileName = filename;
+        _columns = cols;
+        _rows = parsedRows;
+        _autoPickColumnsForType(_selectedAnalysis);
+        _dataValidationError = null;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Tabel berhasil diekstrak dari gambar: ${parsedRows.length} baris, ${cols.length} kolom!',
+            ),
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _dataValidationError =
+            'Gagal mengekstrak tabel dari gambar: $e\nPastikan foto/screenshot tabel jelas dan kontras.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isExtractingImage = false);
+      }
     }
   }
 
@@ -464,6 +537,7 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen>
         analysisId: session.id,
         rows: _rows,
         datasetName: _pickedFileName ?? 'Dataset Analisis',
+        formatData: _isFromImage ? 'image' : 'manual',
       );
 
       Map<String, dynamic> configJson = {};
@@ -684,19 +758,28 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen>
           children: [
             Expanded(
               child: _sourcePillButton(
-                label: 'SAMPEL CEPAT',
+                label: 'SAMPEL',
                 icon: Icons.flash_on_rounded,
                 isActive: _inputMode == 'sample',
                 onTap: _loadSampleData,
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Expanded(
               child: _sourcePillButton(
-                label: 'UNGGAH BERKAS',
+                label: 'CSV / XLS',
                 icon: Icons.upload_file_rounded,
-                isActive: _inputMode == 'file',
-                onTap: _pickFile,
+                isActive: _inputMode == 'file' && !_isFromImage,
+                onTap: () => _pickFile(forceImage: false),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _sourcePillButton(
+                label: 'GAMBAR AI',
+                icon: Icons.auto_awesome_rounded,
+                isActive: _isFromImage || _inputMode == 'image',
+                onTap: () => _pickFile(forceImage: true),
               ),
             ),
           ],
@@ -704,11 +787,11 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen>
 
         const SizedBox(height: 16),
 
-        // Area Upload CSV Bergaris Putus-putus dengan Efek Bounce
+        // Area Upload CSV / Gambar Bergaris Putus-putus dengan Efek Bounce
         ScaleTransition(
           scale: _bounceAnim,
           child: GestureDetector(
-            onTap: _pickFile,
+            onTap: () => _pickFile(forceImage: false),
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
@@ -716,66 +799,193 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen>
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: _pickedFileName != null ? AppColors.blue : AppColors.ink,
+                  color: _isExtractingImage
+                      ? AppColors.blue
+                      : _pickedFileName != null
+                          ? (_isFromImage ? AppColors.blue : AppColors.blue)
+                          : AppColors.ink,
                   width: 2.2,
                 ),
-                boxShadow: const [
+                boxShadow: [
                   BoxShadow(
-                    color: AppColors.yellow,
-                    offset: Offset(4, 4),
+                    color: _isFromImage ? AppColors.blue : AppColors.yellow,
+                    offset: const Offset(4, 4),
                     blurRadius: 0,
                   ),
                 ],
               ),
-              child: Column(
-                children: [
-                  Container(
-                    width: 54,
-                    height: 54,
-                    decoration: BoxDecoration(
-                      color: _pickedFileName != null
-                          ? AppColors.blueSoft
-                          : AppColors.yellowSoft,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.ink, width: 2.0),
+              child: _isExtractingImage
+                  ? Column(
+                      children: [
+                        Container(
+                          width: 54,
+                          height: 54,
+                          decoration: BoxDecoration(
+                            color: AppColors.blueSoft,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AppColors.blue, width: 2.0),
+                          ),
+                          child: const Center(
+                            child: SizedBox(
+                              width: 26,
+                              height: 26,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.8,
+                                color: AppColors.blue,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Mengekstrak Tabel dari Gambar...',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.blue,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'AI Vision sedang mendeteksi baris, kolom, dan nilai numerik...',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.inter(
+                            fontSize: 11.5,
+                            color: AppColors.muted,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        Container(
+                          width: 54,
+                          height: 54,
+                          decoration: BoxDecoration(
+                            color: _pickedFileName != null
+                                ? (_isFromImage ? AppColors.yellowSoft : AppColors.blueSoft)
+                                : AppColors.yellowSoft,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AppColors.ink, width: 2.0),
+                          ),
+                          child: Center(
+                            child: Icon(
+                              _pickedFileName != null
+                                  ? (_isFromImage
+                                      ? Icons.auto_awesome_rounded
+                                      : Icons.check_circle_rounded)
+                                  : Icons.cloud_upload_outlined,
+                              size: 28,
+                              color: _pickedFileName != null
+                                  ? (_isFromImage ? AppColors.ink : AppColors.blue)
+                                  : AppColors.ink,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          _pickedFileName ?? 'Unggah Berkas CSV / Excel atau Gambar Tabel',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _isFromImage
+                              ? 'Tabel Berhasil Diekstrak Otomatis oleh AI Vision'
+                              : 'Mendukung .csv, .xlsx, serta gambar tabel (.png, .jpg) maks. 10 MB',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.inter(
+                            fontSize: 11.5,
+                            color: _isFromImage ? AppColors.success : AppColors.muted,
+                            fontWeight: _isFromImage ? FontWeight.w700 : FontWeight.normal,
+                          ),
+                        ),
+                        if (_pickedFileName != null) ...[
+                          const SizedBox(height: 12),
+                          StatChip(
+                            label: _isFromImage
+                                ? 'AI Vision • ${_rows.length} Baris • ${_columns.length} Kolom'
+                                : '${_rows.length} Baris • ${_columns.length} Kolom',
+                            variant: StatChipVariant.green,
+                            icon: _isFromImage
+                                ? Icons.auto_awesome_rounded
+                                : Icons.table_chart_outlined,
+                          ),
+                        ] else ...[
+                          const SizedBox(height: 14),
+                          Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              InkWell(
+                                onTap: () => _pickFile(forceImage: false),
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.bg,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: AppColors.ink, width: 1.2),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.table_chart_outlined, size: 14),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Pilih CSV / Excel',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              InkWell(
+                                onTap: () => _pickFile(forceImage: true),
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.yellow,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: AppColors.ink, width: 1.2),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.photo_library_outlined, size: 14),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        'Upload Gambar Tabel',
+                                        style: GoogleFonts.plusJakartaSans(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
                     ),
-                    child: Center(
-                      child: Icon(
-                        _pickedFileName != null
-                            ? Icons.check_circle_rounded
-                            : Icons.cloud_upload_outlined,
-                        size: 28,
-                        color: _pickedFileName != null
-                            ? AppColors.blue
-                            : AppColors.ink,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    _pickedFileName ?? 'Klik untuk Unggah Berkas CSV / Excel',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.plusJakartaSans(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.ink,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Mendukung format .csv, .xlsx (Maksimal 10 MB)',
-                    style: GoogleFonts.inter(fontSize: 11.5, color: AppColors.muted),
-                  ),
-                  if (_pickedFileName != null) ...[
-                    const SizedBox(height: 12),
-                    StatChip(
-                      label: '${_rows.length} Baris • ${_columns.length} Kolom',
-                      variant: StatChipVariant.green,
-                      icon: Icons.table_chart_outlined,
-                    ),
-                  ],
-                ],
-              ),
             ),
           ),
         ),
@@ -899,16 +1109,17 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen>
         onTap();
       },
       child: Container(
-        height: 48,
+        height: 46,
+        padding: const EdgeInsets.symmetric(horizontal: 4),
         decoration: BoxDecoration(
           color: isActive ? AppColors.yellow : Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(color: AppColors.ink, width: 2.0),
           boxShadow: isActive
               ? const [
                   BoxShadow(
                     color: AppColors.ink,
-                    offset: Offset(2.5, 2.5),
+                    offset: Offset(2.0, 2.0),
                     blurRadius: 0,
                   ),
                 ]
@@ -917,14 +1128,17 @@ class _NewAnalysisScreenState extends State<NewAnalysisScreen>
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 18, color: AppColors.ink),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: AppColors.ink,
+            Icon(icon, size: 15, color: AppColors.ink),
+            const SizedBox(width: 5),
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.ink,
+                ),
               ),
             ),
           ],

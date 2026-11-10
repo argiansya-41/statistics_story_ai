@@ -168,18 +168,43 @@ class ApiService {
     required int analysisId,
     required List<Map<String, dynamic>> rows,
     String datasetName = 'Dataset Manual',
+    String formatData = 'manual',
   }) async {
     try {
       final response = await _dio.post(
         '/api/v1/analyses/$analysisId/dataset',
         data: {
           'nama_dataset': datasetName,
-          'format_data': 'manual',
+          'format_data': formatData,
           'sumber_input': 'mentah',
           'data': rows,
         },
       );
       return AnalysisRecord.fromJson(Map<String, dynamic>.from(response.data));
+    } on DioException catch (e) {
+      throw _parseError(e);
+    }
+  }
+
+  /// Ekstraksi tabel data dari gambar menggunakan AI Vision (Gemini / Groq)
+  Future<Map<String, dynamic>> extractTableFromImage({
+    required Uint8List fileBytes,
+    required String filename,
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(fileBytes, filename: filename),
+      });
+
+      final response = await _dio.post(
+        '/api/v1/extract-image',
+        data: formData,
+        options: Options(
+          contentType: 'multipart/form-data',
+          receiveTimeout: const Duration(seconds: 90),
+        ),
+      );
+      return Map<String, dynamic>.from(response.data);
     } on DioException catch (e) {
       throw _parseError(e);
     }

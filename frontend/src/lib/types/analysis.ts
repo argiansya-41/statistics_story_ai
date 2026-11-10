@@ -4,7 +4,7 @@ export type AnalysisStatus = "draf" | "diproses" | "selesai" | "narasi_gagal" | 
 
 export type InputSource = "mentah" | "siap_pakai";
 
-export type DatasetFormat = "csv" | "excel" | "manual" | "json";
+export type DatasetFormat = "csv" | "excel" | "manual" | "json" | "image";
 
 export interface ColumnInfo {
   name: string;

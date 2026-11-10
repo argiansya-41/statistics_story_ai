@@ -795,6 +795,33 @@ export const demoBackend = {
     return all[idx];
   },
 
+  async extractImage(file: File): Promise<DatasetSummary> {
+    // Simulasi ekstraksi AI Vision dari gambar tabel pada mode demo
+    const mockRows = [
+      { siswa: "Siswa_1", nilai_pretest: 65, nilai_posttest: 82, jam_belajar: 4.5 },
+      { siswa: "Siswa_2", nilai_pretest: 70, nilai_posttest: 88, jam_belajar: 5.0 },
+      { siswa: "Siswa_3", nilai_pretest: 55, nilai_posttest: 74, jam_belajar: 3.5 },
+      { siswa: "Siswa_4", nilai_pretest: 80, nilai_posttest: 92, jam_belajar: 6.0 },
+      { siswa: "Siswa_5", nilai_pretest: 60, nilai_posttest: 78, jam_belajar: 4.0 },
+      { siswa: "Siswa_6", nilai_pretest: 75, nilai_posttest: 85, jam_belajar: 5.5 },
+      { siswa: "Siswa_7", nilai_pretest: 68, nilai_posttest: 80, jam_belajar: 4.8 },
+      { siswa: "Siswa_8", nilai_pretest: 72, nilai_posttest: 86, jam_belajar: 5.2 },
+    ];
+    const headers = Object.keys(mockRows[0]);
+    const datasetName = file.name.replace(/\.[^/.]+$/, "");
+    return {
+      nama_file: file.name,
+      nama_dataset: datasetName,
+      format_data: "image",
+      sumber_input: "mentah",
+      total_baris: mockRows.length,
+      total_kolom: headers.length,
+      kolom: headers,
+      preview_baris: mockRows,
+      data_mentah: mockRows,
+    };
+  },
+
   async saveConfig(
     id: string | number,
     jenis: AnalysisType,

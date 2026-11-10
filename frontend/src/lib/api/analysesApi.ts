@@ -23,6 +23,7 @@ export interface AnalysisApi {
     dataset: DatasetSummary,
     file?: File
   ): Promise<AnalysisRecord>;
+  extractImage(file: File): Promise<DatasetSummary>;
   saveConfig(
     id: string | number,
     jenis: AnalysisType,
@@ -141,6 +142,27 @@ export const httpApi: AnalysisApi = {
     const record = mapBackendResponseToRecord(res);
     if (!record.dataset_input) record.dataset_input = dataset;
     return record;
+  },
+
+  async extractImage(file: File): Promise<DatasetSummary> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await apiFetch<any>("/api/v1/extract-image", {
+      method: "POST",
+      body: formData,
+    });
+    return {
+      nama_file: res.nama_file || file.name,
+      nama_dataset: res.nama_dataset || file.name.replace(/\.[^/.]+$/, ""),
+      format_data: "image",
+      sumber_input: "mentah",
+      total_baris: res.total_baris || 0,
+      total_kolom: res.total_kolom || 0,
+      kolom: res.kolom || [],
+      kolom_info: res.kolom_info || [],
+      preview_baris: res.preview_baris || [],
+      data_mentah: res.data_mentah || [],
+    };
   },
 
   async saveConfig(
