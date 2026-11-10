@@ -127,6 +127,49 @@ def generate_with_groq(prompt: str) -> str:
     raise RuntimeError("Groq tidak menghasilkan teks.")
 
 
+def generate_with_openrouter(prompt: str) -> str:
+    if os.path.exists(ENV_PATH):
+        load_dotenv(dotenv_path=ENV_PATH, override=True)
+    else:
+        load_dotenv(override=True)
+
+    api_key = (os.getenv("OPENROUTER_API_KEY") or "").strip()
+    model = (os.getenv("OPENROUTER_MODEL") or "nvidia/nemotron-3-ultra-550b-a55").strip()
+    if not api_key:
+        raise RuntimeError("OPENROUTER_API_KEY belum dikonfigurasi.")
+
+    import urllib.request
+    import urllib.error
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": "Kamu adalah asisten ahli edukasi statistik dan data storyteller senior untuk Statistics Story AI. Buat narasi profesional, jelas, dan mendalam. Jangan membuat tabel Markdown atau mengarang nilai statistik."},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.3,
+        "max_tokens": 2000,
+    }
+    request = urllib.request.Request(
+        "https://openrouter.ai/api/v1/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=90) as response:
+            result = json.loads(response.read().decode("utf-8"))
+        content = result.get("choices", [{}])[0].get("message", {}).get("content")
+        if isinstance(content, str) and content.strip():
+            return content.strip()
+        raise RuntimeError("OpenRouter tidak menghasilkan teks.")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"OpenRouter HTTP {exc.code}: {detail[:500]}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"OpenRouter gagal terhubung: {exc.reason}") from exc
+
+
 _gemini_cooldown_until: datetime | None = None
 
 
@@ -134,6 +177,7 @@ def generate_with_ai(prompt: str) -> str:
     global _gemini_cooldown_until
     errors = []
     g_client, q_client, gem_key, groq_key, _, _ = get_ai_config()
+    openrouter_key = (os.getenv("OPENROUTER_API_KEY") or "").strip() or None
 
     now = datetime.now(timezone.utc)
     gemini_available = bool(g_client)
@@ -148,7 +192,7 @@ def generate_with_ai(prompt: str) -> str:
             errors.append(f"Gemini: {err_msg}")
             if "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg:
                 _gemini_cooldown_until = now + timedelta(minutes=30)
-                print(f"Gemini kuota harian habis (429), beralih otomatis ke Groq selama 30 menit. Error: {err_msg}")
+                print(f"Gemini kuota habis, beralih ke Groq selama 30 menit. Error: {err_msg}")
             else:
                 print(f"Gemini gagal, mencoba Groq: {err_msg}")
 
@@ -157,11 +201,18 @@ def generate_with_ai(prompt: str) -> str:
             return generate_with_groq(prompt)
         except Exception as exc:
             errors.append(f"Groq: {exc}")
-            print(f"Groq juga gagal: {exc}")
+            print(f"Groq gagal, mencoba OpenRouter: {exc}")
 
-    if not g_client and not q_client:
+    if openrouter_key:
+        try:
+            return generate_with_openrouter(prompt)
+        except Exception as exc:
+            errors.append(f"OpenRouter: {exc}")
+            print(f"OpenRouter juga gagal: {exc}")
+
+    if not g_client and not q_client and not openrouter_key:
         raise RuntimeError(
-            "API AI belum dikonfigurasi. Isi GEMINI_API_KEY atau GROQ_API_KEY."
+            "API AI belum dikonfigurasi. Isi GEMINI_API_KEY, GROQ_API_KEY, atau OPENROUTER_API_KEY."
         )
     raise RuntimeError("Semua layanan AI gagal. " + " | ".join(errors))
 
@@ -2422,14 +2473,23 @@ def generate_narrative(
             status_code=400, detail="Bahasa harus id atau en."
         )
 
-    narrative = make_narrative(item.hasil_json, lang)
-    if lang == "id":
-        item.narasi_id = narrative
-    else:
-        item.narasi_en = narrative
 
-    db.commit()
-    db.refresh(item)
+    existing_narrative = (
+        item.narasi_id if lang == "id" else item.narasi_en
+    )
+
+    if existing_narrative and not _narasi_terlihat_template(existing_narrative):
+        narrative = existing_narrative
+    else:
+        narrative = make_narrative(item.hasil_json, lang)
+
+        if lang == "id":
+            item.narasi_id = narrative
+        else:
+            item.narasi_en = narrative
+
+        db.commit()
+        db.refresh(item)
     detail = detail_analisis_frontend(item, db)
     detail["lang"] = lang
     detail["narrative"] = narrative
