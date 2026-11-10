@@ -274,6 +274,15 @@ class ApiService {
     }
   }
 
+  /// Hapus seluruh riwayat analisis pengguna
+  Future<void> deleteAllAnalyses() async {
+    try {
+      await _dio.delete('/api/v1/analyses');
+    } on DioException catch (e) {
+      throw _parseError(e);
+    }
+  }
+
   // ================= HELPER ERROR =================
 
   String _parseError(DioException e) {

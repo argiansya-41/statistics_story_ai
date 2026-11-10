@@ -8,12 +8,16 @@ class PillNavItem {
   final String label;
   final IconData icon;
   final IconData? activeIcon;
+  final Widget? customWidget;
+  final Widget? activeCustomWidget;
 
   const PillNavItem({
     required this.keyName,
     required this.label,
     required this.icon,
     this.activeIcon,
+    this.customWidget,
+    this.activeCustomWidget,
   });
 }
 
@@ -78,10 +82,8 @@ class PillBottomNav extends StatelessWidget {
   Widget _buildNavItem(BuildContext context, PillNavItem item, bool isActive) {
     return GestureDetector(
       onTap: () {
-        if (!isActive) {
-          HapticFeedback.selectionClick();
-          onSelect(item.keyName);
-        }
+        HapticFeedback.selectionClick();
+        onSelect(item.keyName);
       },
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
@@ -111,11 +113,14 @@ class PillBottomNav extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              isActive ? (item.activeIcon ?? item.icon) : item.icon,
-              size: 22,
-              color: isActive ? AppColors.ink : Colors.white.withValues(alpha: 0.9),
-            ),
+            (isActive ? item.activeCustomWidget : item.customWidget) ??
+                Icon(
+                  isActive ? (item.activeIcon ?? item.icon) : item.icon,
+                  size: 22,
+                  color: isActive
+                      ? AppColors.ink
+                      : Colors.white.withValues(alpha: 0.9),
+                ),
             AnimatedCrossFade(
               duration: const Duration(milliseconds: 200),
               crossFadeState: isActive
@@ -126,6 +131,8 @@ class PillBottomNav extends StatelessWidget {
                 padding: const EdgeInsets.only(left: 6),
                 child: Text(
                   item.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.plusJakartaSans(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w800,

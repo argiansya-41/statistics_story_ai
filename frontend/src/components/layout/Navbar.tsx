@@ -142,25 +142,11 @@ export const Navbar: React.FC<NavbarProps> = ({ lang, onToggleLang }) => {
 
             {/* Action Items (Lang switcher & CTA) */}
             <div className="flex items-stretch divide-x divide-current ml-auto">
-              {/* Login / Dasbor */}
-              <Link
-                href={isAuthenticated ? "/dasbor" : "/masuk"}
-                className={`hidden sm:flex items-center px-4 md:px-6 font-mono-tech text-xs font-bold tracking-widest uppercase transition-colors border-r ${
-                  isLight
-                    ? "text-black border-black hover:bg-[#EBEB00] hover:text-black"
-                    : "text-white border-white/20 hover:bg-[#EBEB00] hover:text-black"
-                }`}
-              >
-                {isAuthenticated
-                  ? (lang === "id" ? "Dasbor" : "Dashboard")
-                  : (lang === "id" ? "Masuk" : "Log in")}
-              </Link>
-
               {/* Language Toggle */}
               <button
                 onClick={onToggleLang}
                 aria-label="Toggle language"
-                className={`flex items-center gap-2 px-4 md:px-6 font-mono-tech text-xs font-bold transition-colors cursor-pointer border-r ${
+                className={`flex items-center gap-2 px-4 md:px-6 font-mono-tech text-xs font-bold transition-colors cursor-pointer border-l border-r ${
                   isLight
                     ? "text-black border-black hover:bg-[#EBEB00] hover:text-black"
                     : "text-white border-white/20 hover:bg-[#EBEB00] hover:text-black"

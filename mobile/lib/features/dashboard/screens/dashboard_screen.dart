@@ -35,6 +35,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   // Navigation State
   late String _currentTab;
 
+  // Dedicated scroll controllers untuk mencegah scroll stuck/freeze di Web & Mobile
+  final ScrollController _dasborScrollCtrl = ScrollController();
+  final ScrollController _riwayatScrollCtrl = ScrollController();
+
   // Pulse animation for the Floating Action Button
   late AnimationController _fabPulseCtrl;
   late Animation<double> _fabScaleAnim;
@@ -61,6 +65,8 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   @override
   void dispose() {
+    _dasborScrollCtrl.dispose();
+    _riwayatScrollCtrl.dispose();
     _searchCtrl.dispose();
     _fabPulseCtrl.dispose();
     super.dispose();
@@ -96,7 +102,11 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
-  Future<void> _deleteItem(int id) async {
+  Future<void> _deleteItem(int id, [String? sessionName]) async {
+    final title = sessionName != null && sessionName.trim().isNotEmpty
+        ? '"$sessionName"'
+        : 'sesi analisis ini';
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -129,7 +139,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           ],
         ),
         content: Text(
-          'Apakah Anda yakin ingin menghapus data sesi analisis ini dari sistem?',
+          'Apakah Anda yakin ingin menghapus $title dari sistem? Tindakan ini tidak dapat dibatalkan.',
           style: GoogleFonts.inter(fontSize: 13.5, color: AppColors.muted),
         ),
         actions: [
@@ -148,6 +158,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               backgroundColor: AppColors.red,
               foregroundColor: Colors.white,
               elevation: 0,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
                 side: const BorderSide(color: AppColors.ink, width: 2.0),
@@ -166,13 +177,135 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (confirm == true) {
       try {
         await ApiService().deleteAnalysis(id);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.ink,
+            content: Text(
+              'Riwayat analisis berhasil dihapus.',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
         _fetchHistory();
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            backgroundColor: AppColors.ink,
+            backgroundColor: AppColors.red,
             content: Text('Gagal menghapus: $e'),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteAllItems() async {
+    if (_history.isEmpty) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+          side: const BorderSide(color: AppColors.ink, width: 2.2),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: AppColors.redSoft,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.red, width: 1.6),
+              ),
+              child: const Icon(Icons.delete_sweep_rounded,
+                  color: AppColors.red, size: 20),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'HAPUS SEMUA RIWAYAT',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Apakah Anda yakin ingin menghapus seluruh riwayat analisis (${_history.length} sesi)? Semua data turunan dan narasi AI akan dihapus permanen.',
+          style: GoogleFonts.inter(fontSize: 13.5, color: AppColors.muted),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Batal',
+              style: GoogleFonts.plusJakartaSans(
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.red,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: AppColors.ink, width: 2.0),
+              ),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'Ya, Hapus Semua',
+              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await ApiService().deleteAllAnalyses();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.ink,
+            content: Text(
+              'Seluruh riwayat analisis berhasil dibersihkan.',
+              style: GoogleFonts.inter(fontWeight: FontWeight.w600),
+            ),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+        _fetchHistory();
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.red,
+            content: Text('Gagal menghapus: $e'),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
           ),
         );
       }
@@ -206,6 +339,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         }
       },
       body: Stack(
+        fit: StackFit.expand,
         children: [
           Column(
             children: [
@@ -238,6 +372,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 child: RefreshIndicator(
                   color: AppColors.blue,
                   backgroundColor: AppColors.yellow,
+                  notificationPredicate: (notification) => notification.depth == 0,
                   onRefresh: () => _fetchHistory(),
                   child: _currentTab == 'dasbor'
                       ? _buildDasborContent(
@@ -303,10 +438,16 @@ class _DashboardScreenState extends State<DashboardScreen>
     required int totalDiproses,
     required List<AnalysisRecord> recentFive,
   }) {
-    return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      children: [
-        // 1. HERO GREETING CARD (Header Sapaan dengan Avatar Squircle & Sigi Mascot)
+    return SingleChildScrollView(
+      controller: _dasborScrollCtrl,
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: ClampingScrollPhysics(),
+      ),
+      padding: const EdgeInsets.only(left: 20, right: 20, top: 12, bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 1. HERO GREETING CARD (Header Sapaan dengan Avatar Squircle & Sigi Mascot)
         StaggeredEntrance(
           index: 0,
           child: StackedCard(
@@ -557,31 +698,28 @@ class _DashboardScreenState extends State<DashboardScreen>
         // 4. 5 RIWAYAT TERSIMPAN TERBARU
         StaggeredEntrance(
           index: 5,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const SectionHeader(
-                title: 'Riwayat Terbaru',
-                subtitle: 'Sesi analisis yang baru saja dilakukan',
-              ),
-              TextButton(
-                onPressed: () => setState(() => _currentTab = 'riwayat'),
-                child: Row(
-                  children: [
-                    Text(
-                      'Lihat Semua',
-                      style: GoogleFonts.plusJakartaSans(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.blue,
-                      ),
+          child: SectionHeader(
+            title: 'Riwayat Terbaru',
+            subtitle: 'Sesi analisis yang baru saja dilakukan',
+            trailing: TextButton(
+              onPressed: () => setState(() => _currentTab = 'riwayat'),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Lihat Semua',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.blue,
                     ),
-                    const Icon(Icons.arrow_forward_rounded,
-                        size: 16, color: AppColors.blue),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.arrow_forward_rounded,
+                      size: 16, color: AppColors.blue),
+                ],
               ),
-            ],
+            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -605,11 +743,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                   }).toList(),
                 ),
         ),
-
-        const SizedBox(height: 60),
       ],
-    );
-  }
+    ),
+  );
+}
 
   /// Kartu Counter Metrik dengan AnimatedCounter
   Widget _buildMetricCard({
@@ -790,11 +927,65 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
         ),
 
+        // Subheader: Total Riwayat & Aksi Hapus Semua
+        if (!_isLoadingHistory && _history.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'TOTAL: ${_history.length} RIWAYAT',
+                  style: GoogleFonts.spaceMono(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.muted,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                GestureDetector(
+                  onTap: _deleteAllItems,
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.redSoft,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.red, width: 1.2),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.delete_sweep_rounded,
+                            size: 15, color: AppColors.red),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Hapus Semua',
+                          style: GoogleFonts.plusJakartaSans(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.red,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
         // Daftar Riwayat yang Bisa Di-swipe
         Expanded(
           child: _isLoadingHistory
               ? ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  controller: _riwayatScrollCtrl,
+                  physics: const AlwaysScrollableScrollPhysics(
+                    parent: ClampingScrollPhysics(),
+                  ),
+                  padding: const EdgeInsets.only(
+                      left: 20, right: 20, top: 8, bottom: 24),
                   itemCount: 4,
                   itemBuilder: (context, index) => const Padding(
                     padding: EdgeInsets.only(bottom: 12),
@@ -806,46 +997,60 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ),
                 )
               : _historyError != null
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.error_outline_rounded,
-                                size: 42, color: AppColors.red),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Gagal memuat riwayat: $_historyError',
-                              textAlign: TextAlign.center,
-                              style: GoogleFonts.inter(
-                                fontSize: 13,
-                                color: AppColors.red,
+                  ? SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: ClampingScrollPhysics(),
+                      ),
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.error_outline_rounded,
+                                  size: 42, color: AppColors.red),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Gagal memuat riwayat: $_historyError',
+                                textAlign: TextAlign.center,
+                                style: GoogleFonts.inter(
+                                  fontSize: 13,
+                                  color: AppColors.red,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 16),
-                            PrimaryButton(
-                              label: 'Coba Lagi',
-                              width: 140,
-                              height: 42,
-                              onPressed: () => _fetchHistory(),
-                            ),
-                          ],
+                              const SizedBox(height: 16),
+                              PrimaryButton(
+                                label: 'Coba Lagi',
+                                width: 140,
+                                height: 42,
+                                onPressed: () => _fetchHistory(),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     )
                   : _history.isEmpty
-                      ? Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: EmptyStateCard(
-                            title: 'Riwayat Analisis Kosong',
-                            description:
-                                'Tidak ada sesi analisis yang cocok dengan pencarian Anda.',
-                            actionLabel: 'Buat Analisis Sekarang',
-                            onAction: () => _navigateToNewAnalysis(),
+                      ? SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(
+                            parent: ClampingScrollPhysics(),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: EmptyStateCard(
+                              title: 'Riwayat Analisis Kosong',
+                              description:
+                                  'Tidak ada sesi analisis yang cocok dengan pencarian Anda.',
+                              actionLabel: 'Buat Analisis Sekarang',
+                              onAction: () => _navigateToNewAnalysis(),
+                            ),
                           ),
                         )
                       : ListView.builder(
+                          controller: _riwayatScrollCtrl,
+                          physics: const AlwaysScrollableScrollPhysics(
+                            parent: ClampingScrollPhysics(),
+                          ),
                           padding: const EdgeInsets.symmetric(
                               horizontal: 20, vertical: 8),
                           itemCount: _history.length,
@@ -857,7 +1062,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                                 key: Key('history_item_${item.id}'),
                                 direction: DismissDirection.endToStart,
                                 confirmDismiss: (direction) async {
-                                  await _deleteItem(item.id);
+                                  await _deleteItem(item.id, item.namaSesi);
                                   return false; // Penghapusan ditangani oleh _deleteItem()
                                 },
                                 background: Container(
@@ -992,25 +1197,45 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
           ),
 
-          // Tombol Buka Detail
-          SquircleIconButton(
-            icon: Icons.arrow_forward_rounded,
-            size: 34,
-            iconSize: 18,
-            radius: 10,
-            color: AppColors.yellow,
-            shadowOffset: const Offset(2, 2),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => AnalysisDetailScreen(
-                    analysisId: item.id,
-                    initialRecord: item,
-                  ),
-                ),
-              );
-            },
+          // Aksi: Tombol Hapus & Buka Detail
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Tombol Hapus Riwayat (Merah Neo-Brutalist)
+              SquircleIconButton(
+                icon: Icons.delete_outline_rounded,
+                size: 34,
+                iconSize: 17,
+                radius: 10,
+                color: AppColors.redSoft,
+                iconColor: AppColors.red,
+                shadowOffset: const Offset(2, 2),
+                tooltip: 'Hapus Riwayat',
+                onPressed: () => _deleteItem(item.id, item.namaSesi),
+              ),
+              const SizedBox(width: 8),
+              // Tombol Buka Detail (Kuning Neo-Brutalist)
+              SquircleIconButton(
+                icon: Icons.arrow_forward_rounded,
+                size: 34,
+                iconSize: 18,
+                radius: 10,
+                color: AppColors.yellow,
+                shadowOffset: const Offset(2, 2),
+                tooltip: 'Lihat Analisis',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => AnalysisDetailScreen(
+                        analysisId: item.id,
+                        initialRecord: item,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
         ],
       ),

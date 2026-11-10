@@ -61,19 +61,23 @@ class UnderlineTabBar extends StatelessWidget {
                           if (tab.icon != null) ...[
                             Icon(
                               tab.icon,
-                              size: 18,
+                              size: 16,
                               color: isActive ? AppColors.ink : AppColors.muted,
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 6),
                           ],
-                          Text(
-                            tab.label,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 14,
-                              fontWeight:
-                                  isActive ? FontWeight.w800 : FontWeight.w600,
-                              color: isActive ? AppColors.ink : AppColors.muted,
-                              letterSpacing: 0.3,
+                          Flexible(
+                            child: Text(
+                              tab.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 12.5,
+                                fontWeight:
+                                    isActive ? FontWeight.w800 : FontWeight.w600,
+                                color: isActive ? AppColors.ink : AppColors.muted,
+                                letterSpacing: 0.2,
+                              ),
                             ),
                           ),
                         ],

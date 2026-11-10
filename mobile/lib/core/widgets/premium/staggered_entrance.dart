@@ -13,9 +13,9 @@ class StaggeredEntrance extends StatefulWidget {
     super.key,
     required this.index,
     required this.child,
-    this.delayStep = const Duration(milliseconds: 60),
-    this.duration = const Duration(milliseconds: 400),
-    this.offsetY = 24.0,
+    this.delayStep = const Duration(milliseconds: 35),
+    this.duration = const Duration(milliseconds: 280),
+    this.offsetY = 16.0,
   });
 
   @override
@@ -47,12 +47,16 @@ class _StaggeredEntranceState extends State<StaggeredEntrance>
       begin: Offset(0, widget.offsetY),
       end: Offset.zero,
     ).animate(curved);
-    _scaleAnim = Tween<double>(begin: 0.96, end: 1.0).animate(curved);
+    _scaleAnim = Tween<double>(begin: 0.98, end: 1.0).animate(curved);
 
     final delay = widget.delayStep * widget.index;
-    Future.delayed(delay, () {
-      if (mounted) _ctrl.forward();
-    });
+    if (delay == Duration.zero) {
+      _ctrl.forward();
+    } else {
+      Future.delayed(delay, () {
+        if (mounted) _ctrl.forward();
+      });
+    }
   }
 
   @override
@@ -63,11 +67,14 @@ class _StaggeredEntranceState extends State<StaggeredEntrance>
 
   @override
   Widget build(BuildContext context) {
+    if (_ctrl.isCompleted) {
+      return widget.child;
+    }
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (context, child) {
         return Opacity(
-          opacity: _fadeAnim.value,
+          opacity: _fadeAnim.value.clamp(0.0, 1.0),
           child: Transform.translate(
             offset: _slideAnim.value,
             child: Transform.scale(

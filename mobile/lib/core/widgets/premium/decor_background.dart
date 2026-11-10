@@ -51,15 +51,20 @@ class _DecorBackgroundState extends State<DecorBackground>
     final disableAnim = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
 
     return Container(
+      width: double.infinity,
+      height: double.infinity,
       color: AppColors.bg,
       child: Stack(
+        fit: StackFit.expand,
         children: [
           // 1. Pola Titik Halus (Dot Grid Pattern)
           if (widget.showDots)
             Positioned.fill(
-              child: RepaintBoundary(
-                child: CustomPaint(
-                  painter: _DotGridPainter(),
+              child: IgnorePointer(
+                child: RepaintBoundary(
+                  child: CustomPaint(
+                    painter: _DotGridPainter(),
+                  ),
                 ),
               ),
             ),
@@ -69,22 +74,24 @@ class _DecorBackgroundState extends State<DecorBackground>
             Positioned(
               top: -40,
               right: -50,
-              child: AnimatedBuilder(
-                animation: _floatAnim,
-                builder: (context, child) {
-                  return Transform.translate(
-                    offset: Offset(0, _floatAnim.value),
-                    child: child,
-                  );
-                },
-                child: RepaintBoundary(
-                  child: Opacity(
-                    opacity: 0.85,
-                    child: SvgPicture.asset(
-                      'assets/decor/ring_arc.svg',
-                      width: 170,
-                      height: 170,
-                      fit: BoxFit.contain,
+              child: IgnorePointer(
+                child: AnimatedBuilder(
+                  animation: _floatAnim,
+                  builder: (context, child) {
+                    return Transform.translate(
+                      offset: Offset(0, _floatAnim.value),
+                      child: child,
+                    );
+                  },
+                  child: RepaintBoundary(
+                    child: Opacity(
+                      opacity: 0.85,
+                      child: SvgPicture.asset(
+                        'assets/decor/ring_arc.svg',
+                        width: 170,
+                        height: 170,
+                        fit: BoxFit.contain,
+                      ),
                     ),
                   ),
                 ),
@@ -96,22 +103,24 @@ class _DecorBackgroundState extends State<DecorBackground>
             Positioned(
               bottom: 40,
               left: -40,
-              child: AnimatedBuilder(
-                animation: _floatAnim,
-                builder: (context, child) {
-                  return Transform.translate(
-                    offset: Offset(0, -_floatAnim.value * 0.8),
-                    child: child,
-                  );
-                },
-                child: RepaintBoundary(
-                  child: Opacity(
-                    opacity: 0.75,
-                    child: SvgPicture.asset(
-                      'assets/decor/blob_yellow.svg',
-                      width: 140,
-                      height: 140,
-                      fit: BoxFit.contain,
+              child: IgnorePointer(
+                child: AnimatedBuilder(
+                  animation: _floatAnim,
+                  builder: (context, child) {
+                    return Transform.translate(
+                      offset: Offset(0, -_floatAnim.value * 0.8),
+                      child: child,
+                    );
+                  },
+                  child: RepaintBoundary(
+                    child: Opacity(
+                      opacity: 0.75,
+                      child: SvgPicture.asset(
+                        'assets/decor/blob_yellow.svg',
+                        width: 140,
+                        height: 140,
+                        fit: BoxFit.contain,
+                      ),
                     ),
                   ),
                 ),
@@ -119,7 +128,7 @@ class _DecorBackgroundState extends State<DecorBackground>
             ),
 
           // 4. Konten Halaman Utama
-          Positioned.fill(child: widget.child),
+          widget.child,
         ],
       ),
     );

@@ -89,88 +89,98 @@ class _StackedCardState extends State<StackedCard>
     final maxOffsetX = widget.offsetStep.dx * totalLayers;
     final maxOffsetY = widget.offsetStep.dy * totalLayers;
 
+    Widget cardStack(double t) {
+      final shiftX = maxOffsetX * t * 0.7;
+      final shiftY = maxOffsetY * t * 0.7;
+
+      return Stack(
+        clipBehavior: Clip.none,
+        children: [
+          // Lapisan-lapisan offset di belakang (dari paling bawah/luar ke dalam)
+          for (int i = totalLayers - 1; i >= 0; i--) ...[
+            Positioned.fill(
+              child: Transform.translate(
+                offset: Offset(
+                  widget.offsetStep.dx * (i + 1),
+                  widget.offsetStep.dy * (i + 1),
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: layers[i],
+                    borderRadius: BorderRadius.circular(widget.radius),
+                    border: Border.all(
+                      color: widget.borderColor,
+                      width: widget.borderWidth,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+
+          // Kartu Utama
+          Transform.translate(
+            offset: Offset(shiftX, shiftY),
+            child: Container(
+              width: widget.width,
+              height: widget.height,
+              padding: widget.padding ?? const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: widget.cardColor,
+                borderRadius: BorderRadius.circular(widget.radius),
+                border: Border.all(
+                  color: widget.borderColor,
+                  width: widget.borderWidth,
+                ),
+              ),
+              child: widget.child,
+            ),
+          ),
+
+          // Titik konektor dekoratif di atas atau bawah kartu
+          if (widget.showConnectorDots) ...[
+            Positioned(
+              top: -5,
+              left: 28,
+              child: ConnectorDot(
+                size: 11,
+                borderColor: widget.borderColor,
+                borderWidth: widget.borderWidth,
+              ),
+            ),
+            Positioned(
+              bottom: -5,
+              right: 28,
+              child: ConnectorDot(
+                size: 11,
+                borderColor: widget.borderColor,
+                borderWidth: widget.borderWidth,
+              ),
+            ),
+          ],
+        ],
+      );
+    }
+
+    // Jika kartu tidak memiliki aksi onTap, jangan gunakan GestureDetector
+    // agar 100% gesture scroll di layar ponsel tidak terganggu sama sekali.
+    if (widget.onTap == null) {
+      return Padding(
+        padding: widget.margin ?? EdgeInsets.zero,
+        child: cardStack(0.0),
+      );
+    }
+
     return Padding(
       padding: widget.margin ?? EdgeInsets.zero,
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTapDown: _onTapDown,
         onTapUp: _onTapUp,
         onTapCancel: _onTapCancel,
         child: AnimatedBuilder(
           animation: _pressAnim,
-          builder: (context, _) {
-            final t = _pressAnim.value;
-            // Saat ditekan, bergeser mendekati lapisan terdalam
-            final shiftX = maxOffsetX * t * 0.7;
-            final shiftY = maxOffsetY * t * 0.7;
-
-            return Stack(
-              clipBehavior: Clip.none,
-              children: [
-                // Lapisan-lapisan offset di belakang (dari paling bawah/luar ke dalam)
-                for (int i = totalLayers - 1; i >= 0; i--) ...[
-                  Positioned.fill(
-                    child: Transform.translate(
-                      offset: Offset(
-                        widget.offsetStep.dx * (i + 1),
-                        widget.offsetStep.dy * (i + 1),
-                      ),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: layers[i],
-                          borderRadius: BorderRadius.circular(widget.radius),
-                          border: Border.all(
-                            color: widget.borderColor,
-                            width: widget.borderWidth,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-
-                // Kartu Utama
-                Transform.translate(
-                  offset: Offset(shiftX, shiftY),
-                  child: Container(
-                    width: widget.width,
-                    height: widget.height,
-                    padding: widget.padding ?? const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: widget.cardColor,
-                      borderRadius: BorderRadius.circular(widget.radius),
-                      border: Border.all(
-                        color: widget.borderColor,
-                        width: widget.borderWidth,
-                      ),
-                    ),
-                    child: widget.child,
-                  ),
-                ),
-
-                // Titik konektor dekoratif di atas atau bawah kartu
-                if (widget.showConnectorDots) ...[
-                  Positioned(
-                    top: -5,
-                    left: 28,
-                    child: ConnectorDot(
-                      size: 11,
-                      borderColor: widget.borderColor,
-                      borderWidth: widget.borderWidth,
-                    ),
-                  ),
-                  Positioned(
-                    bottom: -5,
-                    right: 28,
-                    child: ConnectorDot(
-                      size: 11,
-                      borderColor: widget.borderColor,
-                      borderWidth: widget.borderWidth,
-                    ),
-                  ),
-                ],
-              ],
-            );
-          },
+          builder: (context, _) => cardStack(_pressAnim.value),
         ),
       ),
     );

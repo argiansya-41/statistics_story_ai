@@ -64,6 +64,96 @@ class _AnalysisDetailScreenState extends State<AnalysisDetailScreen> {
     }
   }
 
+  Future<void> _handleDelete() async {
+    final title = _record?.namaSesi ?? 'sesi analisis ini';
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+          side: const BorderSide(color: AppColors.ink, width: 2.2),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: AppColors.redSoft,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.red, width: 1.6),
+              ),
+              child: const Icon(Icons.delete_outline_rounded,
+                  color: AppColors.red, size: 20),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'HAPUS RIWAYAT',
+              style: GoogleFonts.plusJakartaSans(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Apakah Anda yakin ingin menghapus data "$title" dari sistem? Tindakan ini tidak dapat dibatalkan.',
+          style: GoogleFonts.inter(fontSize: 13.5, color: AppColors.muted),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Batal',
+              style: GoogleFonts.plusJakartaSans(
+                fontWeight: FontWeight.w700,
+                color: AppColors.ink,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.red,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: AppColors.ink, width: 2.0),
+              ),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'Ya, Hapus',
+              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await ApiService().deleteAnalysis(widget.analysisId);
+        if (!mounted) return;
+        Navigator.of(context).pop(true);
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.red,
+            content: Text('Gagal menghapus: $e'),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isSelesai = _record?.status.toLowerCase() == 'selesai';
@@ -82,6 +172,18 @@ class _AnalysisDetailScreenState extends State<AnalysisDetailScreen> {
           shadowOffset: const Offset(2, 2),
           tooltip: 'Segarkan Data',
           onPressed: _loadDetail,
+        ),
+        const SizedBox(width: 8),
+        SquircleIconButton(
+          icon: Icons.delete_outline_rounded,
+          size: 38,
+          iconSize: 18,
+          radius: 12,
+          color: AppColors.redSoft,
+          iconColor: AppColors.red,
+          shadowOffset: const Offset(2, 2),
+          tooltip: 'Hapus Analisis Ini',
+          onPressed: _handleDelete,
         ),
       ],
       body: _isLoading

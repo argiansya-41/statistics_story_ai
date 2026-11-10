@@ -149,13 +149,17 @@ class _PrimaryButtonState extends State<PrimaryButton>
                             Icon(widget.prefixIcon, size: 20, color: _textColor),
                             const SizedBox(width: 8),
                           ],
-                          Text(
-                            widget.label,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w800,
-                              color: _textColor,
-                              letterSpacing: 0.4,
+                          Flexible(
+                            child: Text(
+                              widget.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.plusJakartaSans(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: _textColor,
+                                letterSpacing: 0.4,
+                              ),
                             ),
                           ),
                           if (widget.suffixIcon != null) ...[
