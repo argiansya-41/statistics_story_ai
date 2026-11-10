@@ -67,10 +67,11 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       {/* =========================================================================
           DESKTOP SIDEBAR (Hitam Berkisi, Sudut 0px, Monospace Label)
          ========================================================================= */}
-      <aside className="hidden md:flex flex-col justify-between w-64 xl:w-72 bg-black text-white border-r border-black shrink-0 relative z-30 select-none">
-        <div>
+      <aside className="hidden md:flex flex-col justify-between w-64 xl:w-72 h-screen sticky top-0 self-start bg-black text-white border-r border-black shrink-0 z-30 select-none">
+        {/* Bagian Atas: Logo, Mode Demo, dan Navigasi Utama (Scrollable jika layar pendek) */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
           {/* Kotak Logo Bertangga Seperti Navbar */}
-          <div className="flex items-center px-6 h-20 border-b border-white/20 bg-black">
+          <div className="flex items-center px-6 h-20 border-b border-white/20 bg-black sticky top-0 z-10">
             <Link href="/dasbor" className="flex items-center gap-3 group">
               <svg
                 className="w-5 h-5 text-[#003BFF] transition-transform duration-300 group-hover:scale-110"
@@ -144,8 +145,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           </nav>
         </div>
 
-        {/* User Profile Card & Tombol Keluar di Bawah */}
-        <div className="p-4 border-t border-white/20 bg-black space-y-3">
+        {/* User Profile Card & Tombol Keluar di Bawah (Selalu Tetap / Pinned di Dasar Layar) */}
+        <div className="shrink-0 p-4 border-t border-white/20 bg-black space-y-3">
           <div className="border border-white/20 bg-white/5 p-3">
             <div className="flex items-center gap-2 mb-1.5">
               <span className="w-2 h-2 bg-[#00D084] inline-block" />
@@ -169,7 +170,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
           <button
             type="button"
             onClick={logout}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-white/30 text-white font-mono-tech text-xs font-bold hover:bg-[#FF2E2E] hover:border-[#FF2E2E] hover:text-white transition-colors"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border border-white/30 text-white font-mono-tech text-xs font-bold hover:bg-[#FF2E2E] hover:border-[#FF2E2E] hover:text-white transition-colors cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
             <span>Keluar Akun</span>
@@ -208,8 +209,8 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
 
       {/* Mobile Drawer Menu */}
       {mobileMenuOpen && (
-        <div className="md:hidden fixed inset-x-0 top-14 bottom-0 bg-black text-white z-50 p-6 flex flex-col justify-between overflow-y-auto">
-          <div className="space-y-6">
+        <div className="md:hidden fixed inset-x-0 top-14 bottom-0 bg-black text-white z-50 flex flex-col justify-between">
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {isDemo && (
               <div className="border border-[#EBEB00] bg-[#EBEB00]/10 p-3 font-mono-tech text-xs text-[#EBEB00]">
                 MODE DEMO: data tidak dikirim atau disimpan.
@@ -250,14 +251,14 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
             )}
           </div>
 
-          <div className="pt-6 border-t border-white/20 space-y-4">
+          <div className="shrink-0 p-6 border-t border-white/20 bg-black space-y-4">
             <div className="font-mono-tech text-xs text-white/70">
               Masuk sebagai: <strong>{user?.name || "Mahasiswa"}</strong> ({user?.email})
             </div>
             <button
               type="button"
               onClick={logout}
-              className="w-full py-3 bg-[#FF2E2E] text-white font-mono-tech text-xs font-bold flex items-center justify-center gap-2"
+              className="w-full py-3 bg-[#FF2E2E] text-white font-mono-tech text-xs font-bold flex items-center justify-center gap-2 cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
               <span>Keluar</span>
@@ -269,7 +270,7 @@ export const AppShell: React.FC<AppShellProps> = ({ children }) => {
       {/* =========================================================================
           AREA KONTEN TERANG BERKISI (bg-blueprint-grid)
          ========================================================================= */}
-      <main className="flex-1 min-h-screen bg-[#F4F4F4] text-black bg-blueprint-grid overflow-y-auto relative pb-20">
+      <main className="flex-1 min-w-0 min-h-screen bg-[#F4F4F4] text-black bg-blueprint-grid relative pb-20">
         {children}
       </main>
 
