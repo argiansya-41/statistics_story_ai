@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import type { VisualizationSpec } from "@/lib/types/analysis";
+import { BarChart3, TrendingUp, Info } from "lucide-react";
 
 interface ChartVisualizationProps {
   visualisasi?: VisualizationSpec[];
@@ -9,10 +10,12 @@ interface ChartVisualizationProps {
 
 export const ChartVisualization: React.FC<ChartVisualizationProps> = ({ visualisasi }) => {
   const [activeTab, setActiveTab] = useState(0);
+  const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number; label?: string } | null>(null);
+  const [hoveredBar, setHoveredBar] = useState<{ label: string; value: number } | null>(null);
 
   if (!visualisasi || visualisasi.length === 0) {
     return (
-      <div className="border border-black bg-white p-8 text-center font-mono-tech text-xs text-black/50 shadow-[4px_4px_0px_#000000]">
+      <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 shadow-sm">
         Grafik visualisasi belum tersedia untuk analisis ini.
       </div>
     );
@@ -21,30 +24,65 @@ export const ChartVisualization: React.FC<ChartVisualizationProps> = ({ visualis
   const spec = visualisasi[activeTab] || visualisasi[0];
   const { jenis_grafik, judul, label_x, label_y, data_grafik } = spec;
 
+  // Modern Chart Color Palette (Standard Scientific / Analytics Palette)
+  const colors = {
+    primary: "#2563EB",       // Royal Blue
+    primaryLight: "#3B82F6",  // Blue
+    primaryFill: "rgba(37, 99, 235, 0.65)",
+    secondary: "#10B981",     // Emerald Green
+    accent: "#F59E0B",        // Amber
+    trendline: "#EF4444",     // Crimson Red
+    meanLine: "#DC2626",
+    grid: "#E2E8F0",          // Subtle slate grid
+    gridLight: "#F1F5F9",
+    axis: "#94A3B8",          // Slate-400
+    text: "#475569",          // Slate-600
+    textDark: "#1E293B",      // Slate-800
+  };
+
+  const barPalette = ["#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899", "#06B6D4"];
+
   return (
-    <div className="border border-black bg-white shadow-[4px_4px_0px_#000000]">
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       {/* Header Bar */}
-      <div className="bg-[#EFEFEF] border-b border-black px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 bg-[#003BFF] border border-black inline-block" />
-          <span className="font-mono-tech text-xs font-bold text-black uppercase tracking-wider">
-            {judul || `VISUALISASI PIKSEL SVG: ${jenis_grafik.toUpperCase()}`}
-          </span>
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-5">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+              {jenis_grafik === "scatter" ? (
+                <TrendingUp className="h-4 w-4" />
+              ) : (
+                <BarChart3 className="h-4 w-4" />
+              )}
+            </span>
+            <h3 className="text-base font-semibold text-slate-800">
+              {judul || (jenis_grafik === "scatter" ? "Diagram Tebar (Scatter Plot)" : jenis_grafik === "batang" ? "Grafik Batang" : "Histogram Distribusi")}
+            </h3>
+          </div>
+          <p className="text-xs text-slate-500 pl-9">
+            {jenis_grafik === "scatter"
+              ? `Hubungan antara ${label_x || "Variabel X"} dan ${label_y || "Variabel Y"}`
+              : jenis_grafik === "batang"
+              ? `Perbandingan nilai rata-rata antar kelompok`
+              : `Frekuensi sebaran data observasi`}
+          </p>
         </div>
 
         {/* Tab Pemilih jika terdapat lebih dari 1 grafik */}
         {visualisasi.length > 1 && (
-          <div className="flex border border-black bg-white divide-x divide-black font-mono-tech text-xs font-bold">
+          <div className="flex rounded-lg bg-slate-100 p-1">
             {visualisasi.map((v, i) => (
               <button
                 key={i}
                 type="button"
                 onClick={() => setActiveTab(i)}
-                className={`px-3 py-1 transition-colors ${
-                  activeTab === i ? "bg-black text-white" : "hover:bg-[#EBEB00] text-black"
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${
+                  activeTab === i
+                    ? "bg-white text-blue-600 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
                 }`}
               >
-                Grafik {i + 1}: {v.jenis_grafik}
+                Grafik {i + 1}: {v.jenis_grafik.charAt(0).toUpperCase() + v.jenis_grafik.slice(1)}
               </button>
             ))}
           </div>
@@ -52,50 +90,171 @@ export const ChartVisualization: React.FC<ChartVisualizationProps> = ({ visualis
       </div>
 
       {/* Canvas Area */}
-      <div className="p-6 md:p-8 bg-[#FBFBFB]">
-        {/* 1. GRAFIK BATANG PIKSEL (BAR CHART) */}
+      <div className="pt-6">
+        {/* =========================================================================
+            1. GRAFIK BATANG STANDARD (BAR CHART)
+           ========================================================================= */}
         {jenis_grafik === "batang" && (
-          <div className="w-full max-w-2xl mx-auto space-y-6" role="img" aria-label={`Grafik batang perbandingan ${judul || ""}`}>
+          <div className="w-full max-w-3xl mx-auto space-y-4">
             {(() => {
               const kategori = data_grafik.kategori || [];
               const nilai = data_grafik.nilai || [];
               const labels = data_grafik.labels || [];
-              const maxVal = Math.max(...nilai, 1);
+              const rawMax = Math.max(...nilai, 1);
+              const maxVal = Math.ceil(rawMax * 1.15);
+
+              // Grid ticks for Y-axis (4 intervals)
+              const yTicks = [0, Math.round(maxVal * 0.25), Math.round(maxVal * 0.5), Math.round(maxVal * 0.75), maxVal];
+
+              const width = 640;
+              const height = 340;
+              const marginLeft = 60;
+              const marginRight = 30;
+              const marginTop = 30;
+              const marginBottom = 60;
+              const plotWidth = width - marginLeft - marginRight;
+              const plotHeight = height - marginTop - marginBottom;
+
+              const slotWidth = plotWidth / Math.max(kategori.length, 1);
+              const barWidth = Math.min(64, slotWidth * 0.55);
 
               return (
-                <div>
-                  <div className="space-y-4">
-                    {kategori.map((kat, idx) => {
-                      const val = nilai[idx] || 0;
-                      const pct = Math.max(10, (val / (maxVal * 1.15)) * 100);
-                      const isFirst = idx === 0;
+                <div className="space-y-3">
+                  <div className="relative aspect-[16/9] w-full">
+                    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full select-none">
+                      {/* Horizontal Gridlines & Y-Axis Labels */}
+                      {yTicks.map((tick, i) => {
+                        const yPos = marginTop + plotHeight - (tick / maxVal) * plotHeight;
+                        return (
+                          <g key={i}>
+                            <line
+                              x1={marginLeft}
+                              y1={yPos}
+                              x2={marginLeft + plotWidth}
+                              y2={yPos}
+                              stroke={colors.grid}
+                              strokeWidth="1"
+                              strokeDasharray="4 4"
+                            />
+                            <text
+                              x={marginLeft - 12}
+                              y={yPos + 4}
+                              textAnchor="end"
+                              fontSize="11"
+                              fontWeight="500"
+                              fill={colors.text}
+                            >
+                              {tick}
+                            </text>
+                          </g>
+                        );
+                      })}
 
-                      return (
-                        <div key={kat} className="space-y-1.5">
-                          <div className="flex justify-between font-mono-tech text-xs font-bold">
-                            <span className="text-black uppercase">{kat}</span>
-                            <span className="text-black/70 font-mono-tech">{labels[idx] || `Rata-rata: ${val}`}</span>
-                          </div>
-                          <div className="h-11 w-full bg-[#E5E5E5] border-2 border-black relative overflow-hidden">
-                            <div
-                              style={{ width: `${pct}%` }}
-                              className={`h-full border-r-2 border-black transition-all duration-700 flex items-center justify-end pr-3 font-mono-tech text-xs font-bold ${
-                                isFirst
-                                  ? "bg-[#003BFF] text-white"
-                                  : "bg-[#EBEB00] text-black"
-                              }`}
+                      {/* Main Axis Lines */}
+                      <line
+                        x1={marginLeft}
+                        y1={marginTop}
+                        x2={marginLeft}
+                        y2={marginTop + plotHeight}
+                        stroke={colors.axis}
+                        strokeWidth="1.5"
+                      />
+                      <line
+                        x1={marginLeft}
+                        y1={marginTop + plotHeight}
+                        x2={marginLeft + plotWidth}
+                        y2={marginTop + plotHeight}
+                        stroke={colors.axis}
+                        strokeWidth="1.5"
+                      />
+
+                      {/* Bars */}
+                      {kategori.map((kat, idx) => {
+                        const val = nilai[idx] || 0;
+                        const barHeight = Math.max(4, (val / maxVal) * plotHeight);
+                        const x = marginLeft + idx * slotWidth + (slotWidth - barWidth) / 2;
+                        const y = marginTop + plotHeight - barHeight;
+                        const color = barPalette[idx % barPalette.length];
+                        const isHovered = hoveredBar?.label === kat;
+
+                        return (
+                          <g
+                            key={kat}
+                            className="cursor-pointer transition-opacity"
+                            onMouseEnter={() => setHoveredBar({ label: kat, value: val })}
+                            onMouseLeave={() => setHoveredBar(null)}
+                          >
+                            {/* Bar with smooth rounded top corners */}
+                            <rect
+                              x={x}
+                              y={y}
+                              width={barWidth}
+                              height={barHeight}
+                              rx="6"
+                              ry="6"
+                              fill={color}
+                              fillOpacity={isHovered ? 1 : 0.88}
+                              stroke={color}
+                              strokeWidth="1"
+                            />
+
+                            {/* Value label on top of bar */}
+                            <text
+                              x={x + barWidth / 2}
+                              y={y - 8}
+                              textAnchor="middle"
+                              fontSize="12"
+                              fontWeight="700"
+                              fill={colors.textDark}
                             >
                               {val}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
+                            </text>
+
+                            {/* Category label below X axis */}
+                            <text
+                              x={x + barWidth / 2}
+                              y={marginTop + plotHeight + 22}
+                              textAnchor="middle"
+                              fontSize="12"
+                              fontWeight="600"
+                              fill={colors.textDark}
+                            >
+                              {kat}
+                            </text>
+                            {labels[idx] && (
+                              <text
+                                x={x + barWidth / 2}
+                                y={marginTop + plotHeight + 38}
+                                textAnchor="middle"
+                                fontSize="10"
+                                fill={colors.text}
+                              >
+                                {labels[idx]}
+                              </text>
+                            )}
+                          </g>
+                        );
+                      })}
+
+                      {/* Y-Axis Label */}
+                      <text
+                        transform={`rotate(-90)`}
+                        x={-(marginTop + plotHeight / 2)}
+                        y="18"
+                        textAnchor="middle"
+                        fontSize="11"
+                        fontWeight="600"
+                        fill={colors.text}
+                      >
+                        {label_y || "Rata-rata Nilai"}
+                      </text>
+                    </svg>
                   </div>
 
-                  <div className="mt-6 flex justify-between font-mono-tech text-[10px] text-black/60 border-t border-black pt-2">
-                    <span>SUMBU X: {label_x || "Kelompok Observasi"}</span>
-                    <span>SUMBU Y: {label_y || "Rata-rata Nilai"}</span>
+                  {/* Legend / Info Bar */}
+                  <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
+                    <span className="font-medium">Sumbu X: {label_x || "Kelompok Observasi"}</span>
+                    <span className="font-medium">Sumbu Y: {label_y || "Nilai Rata-rata"}</span>
                   </div>
                 </div>
               );
@@ -103,86 +262,187 @@ export const ChartVisualization: React.FC<ChartVisualizationProps> = ({ visualis
           </div>
         )}
 
-        {/* 2. HISTOGRAM PIKSEL */}
+        {/* =========================================================================
+            2. HISTOGRAM STANDARD (DISTRIBUSI FREKUENSI)
+           ========================================================================= */}
         {jenis_grafik === "histogram" && (
-          <div className="w-full max-w-2xl mx-auto space-y-4" role="img" aria-label={`Histogram frekuensi distribusi ${judul || ""}`}>
+          <div className="w-full max-w-3xl mx-auto space-y-4">
             {(() => {
               const bins = data_grafik.bins || [];
-              const maxCount = Math.max(...bins.map((b) => b.count), 1);
+              const rawMax = Math.max(...bins.map((b) => b.count), 1);
+              const maxCount = Math.ceil(rawMax * 1.15);
               const mean = data_grafik.mean_marker;
 
+              const width = 640;
+              const height = 340;
+              const marginLeft = 60;
+              const marginRight = 30;
+              const marginTop = 30;
+              const marginBottom = 65;
+              const plotWidth = width - marginLeft - marginRight;
+              const plotHeight = height - marginTop - marginBottom;
+
+              const yTicks = [0, Math.round(maxCount * 0.25), Math.round(maxCount * 0.5), Math.round(maxCount * 0.75), maxCount];
+              const binWidth = plotWidth / Math.max(bins.length, 1);
+
               return (
-                <div>
-                  {mean !== undefined && (
-                    <div className="mb-3 flex items-center gap-2 font-mono-tech text-xs text-[#003BFF] font-bold">
-                      <span className="w-3 h-1 bg-[#003BFF] border border-black inline-block" />
-                      <span>Garis Rata-rata (Mean): {mean}</span>
-                    </div>
-                  )}
+                <div className="space-y-3">
+                  <div className="relative aspect-[16/9] w-full">
+                    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full select-none">
+                      {/* Horizontal Gridlines */}
+                      {yTicks.map((tick, i) => {
+                        const yPos = marginTop + plotHeight - (tick / maxCount) * plotHeight;
+                        return (
+                          <g key={i}>
+                            <line
+                              x1={marginLeft}
+                              y1={yPos}
+                              x2={marginLeft + plotWidth}
+                              y2={yPos}
+                              stroke={colors.grid}
+                              strokeWidth="1"
+                              strokeDasharray="4 4"
+                            />
+                            <text
+                              x={marginLeft - 12}
+                              y={yPos + 4}
+                              textAnchor="end"
+                              fontSize="11"
+                              fontWeight="500"
+                              fill={colors.text}
+                            >
+                              {tick}
+                            </text>
+                          </g>
+                        );
+                      })}
 
-                  {/* SVG Histogram */}
-                  <div className="relative aspect-[16/9] w-full border-2 border-black bg-white p-3">
-                    <svg
-                      viewBox="0 0 100 60"
-                      preserveAspectRatio="none"
-                      className="w-full h-full"
-                      aria-label="Distribusi histogram data"
-                    >
-                      {/* Grid Horizontal */}
-                      <line x1="0" y1="15" x2="100" y2="15" stroke="#E5E5E5" strokeWidth="0.5" strokeDasharray="1,1" />
-                      <line x1="0" y1="30" x2="100" y2="30" stroke="#E5E5E5" strokeWidth="0.5" strokeDasharray="1,1" />
-                      <line x1="0" y1="45" x2="100" y2="45" stroke="#E5E5E5" strokeWidth="0.5" strokeDasharray="1,1" />
-                      <line x1="0" y1="55" x2="100" y2="55" stroke="#000000" strokeWidth="1" />
+                      {/* Axis Lines */}
+                      <line
+                        x1={marginLeft}
+                        y1={marginTop}
+                        x2={marginLeft}
+                        y2={marginTop + plotHeight}
+                        stroke={colors.axis}
+                        strokeWidth="1.5"
+                      />
+                      <line
+                        x1={marginLeft}
+                        y1={marginTop + plotHeight}
+                        x2={marginLeft + plotWidth}
+                        y2={marginTop + plotHeight}
+                        stroke={colors.axis}
+                        strokeWidth="1.5"
+                      />
 
-                      {/* Batang Bins (Kotak Tegas) */}
+                      {/* Histogram Bins */}
                       {bins.map((b, idx) => {
-                        const barWidth = 100 / bins.length;
-                        const barHeight = (b.count / (maxCount * 1.2)) * 48;
-                        const x = idx * barWidth + 1;
-                        const y = 55 - barHeight;
+                        const barHeight = (b.count / maxCount) * plotHeight;
+                        const x = marginLeft + idx * binWidth + 1.5;
+                        const y = marginTop + plotHeight - barHeight;
+                        const w = Math.max(3, binWidth - 3);
 
                         return (
                           <g key={idx}>
                             <rect
                               x={x}
                               y={y}
-                              width={Math.max(3, barWidth - 2)}
+                              width={w}
                               height={barHeight}
-                              fill="#003BFF"
-                              stroke="#000000"
-                              strokeWidth="0.8"
+                              rx="3"
+                              ry="3"
+                              fill={colors.primaryLight}
+                              fillOpacity="0.85"
+                              stroke={colors.primary}
+                              strokeWidth="1"
                             />
                             {b.count > 0 && (
                               <text
-                                x={x + barWidth / 2 - 1}
-                                y={y - 2}
-                                fontSize="3"
+                                x={x + w / 2}
+                                y={y - 6}
                                 textAnchor="middle"
-                                fontFamily="monospace"
-                                fontWeight="bold"
-                                fill="#000000"
+                                fontSize="11"
+                                fontWeight="700"
+                                fill={colors.textDark}
                               >
                                 {b.count}
                               </text>
                             )}
+                            {/* Bin Range Label */}
+                            <text
+                              x={x + w / 2}
+                              y={marginTop + plotHeight + 18}
+                              textAnchor="middle"
+                              fontSize="10"
+                              fontWeight="500"
+                              fill={colors.text}
+                            >
+                              {b.label}
+                            </text>
                           </g>
                         );
                       })}
+
+                      {/* Mean Marker Line (Garis Rata-rata) */}
+                      {mean !== undefined && bins.length > 0 && (() => {
+                        const minVal = bins[0].min;
+                        const maxVal = bins[bins.length - 1].max;
+                        const range = maxVal - minVal || 1;
+                        const meanX = marginLeft + ((mean - minVal) / range) * plotWidth;
+
+                        return (
+                          <g>
+                            <line
+                              x1={meanX}
+                              y1={marginTop}
+                              x2={meanX}
+                              y2={marginTop + plotHeight}
+                              stroke={colors.meanLine}
+                              strokeWidth="2"
+                              strokeDasharray="5 3"
+                            />
+                            <rect
+                              x={meanX - 35}
+                              y={marginTop - 22}
+                              width="70"
+                              height="18"
+                              rx="4"
+                              fill="#FEF2F2"
+                              stroke={colors.meanLine}
+                              strokeWidth="1"
+                            />
+                            <text
+                              x={meanX}
+                              y={marginTop - 10}
+                              textAnchor="middle"
+                              fontSize="10"
+                              fontWeight="700"
+                              fill={colors.meanLine}
+                            >
+                              Mean: {mean}
+                            </text>
+                          </g>
+                        );
+                      })()}
+
+                      {/* Y-Axis Title */}
+                      <text
+                        transform={`rotate(-90)`}
+                        x={-(marginTop + plotHeight / 2)}
+                        y="18"
+                        textAnchor="middle"
+                        fontSize="11"
+                        fontWeight="600"
+                        fill={colors.text}
+                      >
+                        {label_y || "Frekuensi (Jumlah)"}
+                      </text>
                     </svg>
                   </div>
 
-                  {/* Label Rentang Bins */}
-                  <div className="flex justify-between mt-2 font-mono-tech text-[10px] text-black/70 font-bold">
-                    {bins.map((b, i) => (
-                      <span key={i} className="text-center truncate px-0.5">
-                        {b.label}
-                      </span>
-                    ))}
-                  </div>
-
-                  <div className="mt-4 flex justify-between font-mono-tech text-[10px] text-black/60 border-t border-black pt-2">
-                    <span>SUMBU X: {label_x || "Interval Nilai Observasi"}</span>
-                    <span>SUMBU Y: {label_y || "Frekuensi Kemunculan"}</span>
+                  <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pt-2 border-t border-slate-100">
+                    <span className="font-medium">Sumbu X: {label_x || "Interval Nilai"}</span>
+                    <span className="font-medium">Sumbu Y: {label_y || "Frekuensi"}</span>
                   </div>
                 </div>
               );
@@ -190,13 +450,15 @@ export const ChartVisualization: React.FC<ChartVisualizationProps> = ({ visualis
           </div>
         )}
 
-        {/* 3. SCATTER PLOT PIKSEL (DENGAN TITIK KOTAK & GARIS TEGAS) */}
+        {/* =========================================================================
+            3. SCATTER PLOT STANDARD (DIAGRAM TEBAR BULAT & GARIS TREN)
+           ========================================================================= */}
         {jenis_grafik === "scatter" && (
-          <div className="w-full max-w-2xl mx-auto space-y-4" role="img" aria-label={`Scatter plot korelasi/regresi ${judul || ""}`}>
+          <div className="w-full max-w-3xl mx-auto space-y-4">
             {(() => {
               const points = data_grafik.points || [];
               if (points.length === 0) {
-                return <div className="font-mono-tech text-xs">Titik data belum tersedia.</div>;
+                return <div className="text-sm text-slate-500 py-8 text-center">Titik data belum tersedia.</div>;
               }
 
               const xs = points.map((p) => p.x);
@@ -206,78 +468,223 @@ export const ChartVisualization: React.FC<ChartVisualizationProps> = ({ visualis
               const minY = Math.min(...ys);
               const maxY = Math.max(...ys);
 
-              const rangeX = maxX === minX ? 1 : maxX - minX;
-              const rangeY = maxY === minY ? 1 : maxY - minY;
+              // Standard dimensions
+              const width = 640;
+              const height = 360;
+              const marginLeft = 60;
+              const marginRight = 30;
+              const marginTop = 30;
+              const marginBottom = 60;
+              const plotWidth = width - marginLeft - marginRight;
+              const plotHeight = height - marginTop - marginBottom;
 
-              // Pemetaan koordinat ke viewport 100 x 60
-              const mapPt = (p: { x: number; y: number }) => {
-                const nx = 10 + ((p.x - minX) / rangeX) * 80;
-                const ny = 50 - ((p.y - minY) / rangeY) * 40;
-                return { x: nx, y: ny };
-              };
+              // Generous padding so dots on the boundary don't get clipped
+              const spanX = maxX - minX || 1;
+              const spanY = maxY - minY || 1;
+              const padX = spanX * 0.05;
+              const padY = spanY * 0.05;
+
+              const domainMinX = Math.floor(minX - padX);
+              const domainMaxX = Math.ceil(maxX + padX);
+              const domainMinY = Math.floor(minY - padY);
+              const domainMaxY = Math.ceil(maxY + padY);
+
+              const rangeX = domainMaxX - domainMinX;
+              const rangeY = domainMaxY - domainMinY;
+
+              const mapX = (xVal: number) => marginLeft + ((xVal - domainMinX) / rangeX) * plotWidth;
+              const mapY = (yVal: number) => marginTop + plotHeight - ((yVal - domainMinY) / rangeY) * plotHeight;
+
+              // 5 Clean Ticks for X and Y
+              const xTicks = Array.from({ length: 6 }, (_, i) =>
+                Math.round(domainMinX + (i / 5) * rangeX)
+              );
+              const yTicks = Array.from({ length: 6 }, (_, i) =>
+                Math.round(domainMinY + (i / 5) * rangeY)
+              );
 
               const line = data_grafik.line;
-              const lineStart = line ? mapPt({ x: line.x1, y: line.y1 }) : null;
-              const lineEnd = line ? mapPt({ x: line.x2, y: line.y2 }) : null;
+              const lineStart = line ? { x: mapX(line.x1), y: mapY(line.y1) } : null;
+              const lineEnd = line ? { x: mapX(line.x2), y: mapY(line.y2) } : null;
+
+              // Dynamic dot radius based on point density
+              const dotRadius = points.length > 250 ? 3.5 : points.length > 100 ? 4.5 : 5.5;
 
               return (
-                <div>
-                  <div className="relative aspect-[16/10] w-full border-2 border-black bg-white p-2">
-                    <svg
-                      viewBox="0 0 100 60"
-                      preserveAspectRatio="none"
-                      className="w-full h-full"
-                      aria-label="Diagram tebar titik piksel dan garis regresi"
-                    >
-                      {/* Grid Kisi Blueprint */}
-                      <line x1="10" y1="10" x2="92" y2="10" stroke="#EDEDED" strokeWidth="0.5" strokeDasharray="1,1" />
-                      <line x1="10" y1="30" x2="92" y2="30" stroke="#EDEDED" strokeWidth="0.5" strokeDasharray="1,1" />
-                      <line x1="10" y1="50" x2="92" y2="50" stroke="#000000" strokeWidth="1" />
-                      <line x1="10" y1="10" x2="10" y2="50" stroke="#000000" strokeWidth="1" />
+                <div className="space-y-4">
+                  {/* Clean Legend Header */}
+                  <div className="flex flex-wrap items-center justify-end gap-5 text-xs text-slate-600">
+                    <div className="flex items-center gap-2">
+                      <span className="h-3 w-3 rounded-full bg-blue-500 border border-white shadow-sm inline-block" />
+                      <span className="font-medium text-slate-700">Titik Observasi ({points.length} data)</span>
+                    </div>
+                    {line && (
+                      <div className="flex items-center gap-2">
+                        <span className="h-0.5 w-5 bg-red-500 inline-block" />
+                        <span className="font-medium text-slate-700">Garis Tren Linear</span>
+                      </div>
+                    )}
+                  </div>
 
-                      {/* Garis Tren / Garis Regresi Tegas */}
+                  {/* SVG Chart */}
+                  <div className="relative aspect-[16/9] w-full bg-white rounded-xl">
+                    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full select-none">
+                      {/* Horizontal Gridlines & Y-Axis Numeric Ticks */}
+                      {yTicks.map((tick, i) => {
+                        const yPos = mapY(tick);
+                        return (
+                          <g key={`y-${i}`}>
+                            <line
+                              x1={marginLeft}
+                              y1={yPos}
+                              x2={marginLeft + plotWidth}
+                              y2={yPos}
+                              stroke={colors.grid}
+                              strokeWidth="1"
+                              strokeDasharray="4 4"
+                            />
+                            <text
+                              x={marginLeft - 12}
+                              y={yPos + 4}
+                              textAnchor="end"
+                              fontSize="11"
+                              fontWeight="500"
+                              fill={colors.text}
+                            >
+                              {tick}
+                            </text>
+                          </g>
+                        );
+                      })}
+
+                      {/* Vertical Gridlines & X-Axis Numeric Ticks */}
+                      {xTicks.map((tick, i) => {
+                        const xPos = mapX(tick);
+                        return (
+                          <g key={`x-${i}`}>
+                            <line
+                              x1={xPos}
+                              y1={marginTop}
+                              x2={xPos}
+                              y2={marginTop + plotHeight}
+                              stroke={colors.gridLight}
+                              strokeWidth="1"
+                              strokeDasharray="4 4"
+                            />
+                            <text
+                              x={xPos}
+                              y={marginTop + plotHeight + 20}
+                              textAnchor="middle"
+                              fontSize="11"
+                              fontWeight="500"
+                              fill={colors.text}
+                            >
+                              {tick}
+                            </text>
+                          </g>
+                        );
+                      })}
+
+                      {/* Standard Coordinate Axes */}
+                      <line
+                        x1={marginLeft}
+                        y1={marginTop}
+                        x2={marginLeft}
+                        y2={marginTop + plotHeight}
+                        stroke={colors.axis}
+                        strokeWidth="1.5"
+                      />
+                      <line
+                        x1={marginLeft}
+                        y1={marginTop + plotHeight}
+                        x2={marginLeft + plotWidth}
+                        y2={marginTop + plotHeight}
+                        stroke={colors.axis}
+                        strokeWidth="1.5"
+                      />
+
+                      {/* Regression / Trend Line */}
                       {lineStart && lineEnd && (
                         <line
                           x1={lineStart.x}
                           y1={lineStart.y}
                           x2={lineEnd.x}
                           y2={lineEnd.y}
-                          stroke="#003BFF"
-                          strokeWidth="1.2"
-                          strokeDasharray="2,1"
+                          stroke={colors.trendline}
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
                         />
                       )}
 
-                      {/* Titik Tebar Sebagai KOTAK PIKSEL (<rect>) */}
+                      {/* Data Points (CIRCLES with professional opacity for density) */}
                       {points.map((pt, idx) => {
-                        const coords = mapPt(pt);
+                        const cx = mapX(pt.x);
+                        const cy = mapY(pt.y);
+                        const isHovered = hoveredPoint?.x === pt.x && hoveredPoint?.y === pt.y;
+
                         return (
-                          <rect
+                          <circle
                             key={idx}
-                            x={coords.x - 1.5}
-                            y={coords.y - 1.5}
-                            width="3"
-                            height="3"
-                            fill="#FF2E2E"
-                            stroke="#000000"
-                            strokeWidth="0.6"
-                            aria-label={`Titik (${pt.x}, ${pt.y})`}
+                            cx={cx}
+                            cy={cy}
+                            r={isHovered ? dotRadius + 2.5 : dotRadius}
+                            fill={isHovered ? "#1D4ED8" : colors.primary}
+                            fillOpacity={isHovered ? 1 : 0.65}
+                            stroke="#FFFFFF"
+                            strokeWidth={isHovered ? 2 : 1}
+                            className="cursor-pointer transition-all duration-150"
+                            onMouseEnter={() => setHoveredPoint(pt)}
+                            onMouseLeave={() => setHoveredPoint(null)}
                           >
                             <title>
-                              ({pt.x}, {pt.y})
+                              {pt.label ? `${pt.label}: ` : ""}({pt.x}, {pt.y})
                             </title>
-                          </rect>
+                          </circle>
                         );
                       })}
+
+                      {/* X-Axis Title */}
+                      <text
+                        x={marginLeft + plotWidth / 2}
+                        y={height - 12}
+                        textAnchor="middle"
+                        fontSize="12"
+                        fontWeight="600"
+                        fill={colors.textDark}
+                      >
+                        {label_x || "Variabel X"}
+                      </text>
+
+                      {/* Y-Axis Title */}
+                      <text
+                        transform={`rotate(-90)`}
+                        x={-(marginTop + plotHeight / 2)}
+                        y="18"
+                        textAnchor="middle"
+                        fontSize="12"
+                        fontWeight="600"
+                        fill={colors.textDark}
+                      >
+                        {label_y || "Variabel Y"}
+                      </text>
                     </svg>
                   </div>
 
-                  <div className="mt-3 flex justify-between font-mono-tech text-[10px] text-black/70 font-bold border-t border-black pt-2">
-                    <div>
-                      SUMBU X: <span className="text-black">{label_x || "Variabel X"}</span> ({minX} s.d. {maxX})
+                  {/* Active Tooltip / Hover Banner */}
+                  <div className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-2.5 text-xs text-slate-600 border border-slate-200/60">
+                    <div className="flex items-center gap-2">
+                      <Info className="h-4 w-4 text-blue-500" />
+                      {hoveredPoint ? (
+                        <span>
+                          Observasi Dipilih: <strong className="text-slate-850">{label_x || "X"}: {hoveredPoint.x}</strong> | <strong className="text-slate-850">{label_y || "Y"}: {hoveredPoint.y}</strong>
+                          {hoveredPoint.label ? ` (${hoveredPoint.label})` : ""}
+                        </span>
+                      ) : (
+                        <span>Arahkan kursor ke titik data untuk melihat nilai koordinat secara presisi.</span>
+                      )}
                     </div>
-                    <div>
-                      SUMBU Y: <span className="text-black">{label_y || "Variabel Y"}</span> ({minY} s.d. {maxY})
+                    <div className="text-slate-400 font-mono text-[11px]">
+                      Rentang: [{minX} s.d. {maxX}] × [{minY} s.d. {maxY}]
                     </div>
                   </div>
                 </div>

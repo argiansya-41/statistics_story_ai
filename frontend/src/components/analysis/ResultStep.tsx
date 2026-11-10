@@ -224,7 +224,7 @@ export const ResultStep: React.FC<ResultStepProps> = ({
             </div>
           )}
 
-          {/* KONTEN TAB 2: VISUALISASI GRAFIK SVG PIKSEL (FR-13) */}
+          {/* KONTEN TAB 2: VISUALISASI GRAFIK STATISTIK (FR-13) */}
           {activeTab === "grafik" && (
             <div className="space-y-4">
               <ChartVisualization visualisasi={analysis.visualisasi} />
