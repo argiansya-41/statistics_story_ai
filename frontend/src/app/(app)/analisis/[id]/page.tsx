@@ -155,11 +155,18 @@ export default function WorkspaceAnalisisPage({
       const updated = await api.run(id);
       setAnalysis(updated);
 
-      // Aktifkan polling
-      if (!pollingRef.current) {
-        pollingRef.current = setInterval(() => {
-          fetchRecord(false);
-        }, 2500);
+      // Hanya aktifkan polling jika status masih dalam antrean / diproses
+      if (updated.status === "diproses") {
+        if (!pollingRef.current) {
+          pollingRef.current = setInterval(() => {
+            fetchRecord(false);
+          }, 2500);
+        }
+      } else {
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
       }
     } catch (err: any) {
       alert("Gagal menjalankan analisis: " + (err.message || "Kesalahan kalkulasi"));
@@ -175,11 +182,18 @@ export default function WorkspaceAnalisisPage({
       const updated = await api.requestNarrative(id, lang);
       setAnalysis(updated);
 
-      // Aktifkan polling
-      if (!pollingRef.current) {
-        pollingRef.current = setInterval(() => {
-          fetchRecord(false);
-        }, 2500);
+      // Hanya aktifkan polling jika status masih dalam antrean / diproses
+      if (updated.status === "diproses") {
+        if (!pollingRef.current) {
+          pollingRef.current = setInterval(() => {
+            fetchRecord(false);
+          }, 2500);
+        }
+      } else {
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
       }
     } catch (err: any) {
       alert("Gagal meminta narasi: " + (err.message || "Kesalahan server"));
@@ -233,7 +247,7 @@ export default function WorkspaceAnalisisPage({
             Sesi Analisis Tidak Tersedia
           </h2>
           <p className="font-sans text-xs text-black/70 max-w-md mx-auto leading-relaxed">
-            Sesi analisis dengan ID tersebut tidak ditemukan di repositori Anda atau milik pengguna lain. Periksa kembali tautan yang Anda tuju.
+            {errorMsg || "Sesi analisis dengan ID tersebut tidak ditemukan di repositori Anda atau milik pengguna lain. Periksa kembali tautan yang Anda tuju."}
           </p>
         </div>
 

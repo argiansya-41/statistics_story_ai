@@ -216,6 +216,21 @@ export const ResultStep: React.FC<ResultStepProps> = ({
           {/* KONTEN TAB 1: ANGKA STATISTIK (FR-07 S.D. FR-10) */}
           {activeTab === "angka" && (
             <div className="space-y-4">
+              {/* Penjelasan Fungsi & Hubungan dengan Dataset */}
+              <div className="border border-black bg-[#F8FAFC] p-4 flex items-start gap-3 shadow-[3px_3px_0px_#000000]">
+                <div className="w-8 h-8 bg-black text-white flex items-center justify-center shrink-0">
+                  <BarChart2 className="w-4 h-4 text-[#EBEB00]" />
+                </div>
+                <div className="space-y-1">
+                  <div className="font-mono-tech text-xs font-bold text-black uppercase">
+                    UNTUK APA TAB ANGKA STATISTIK INI?
+                  </div>
+                  <p className="font-sans text-xs text-black/80 leading-relaxed">
+                    Tab ini menyajikan <strong>hasil hitung pasti (deterministik)</strong> dari dataset yang Anda masukkan menggunakan rumus baku statistik (tanpa rekayasa AI). Angka-angka inilah yang menjadi rujukan utama untuk membuktikan fakta data secara ilmiah, sebelum divisualisasikan dan diceritakan ke dalam narasi laporan.
+                  </p>
+                </div>
+              </div>
+
               <div className="flex items-center justify-between font-mono-tech text-xs text-black/60">
                 <span>OUTPUT ANGKA DETERMINISTIK (SCIPY 1.13 EQUIVALENT)</span>
                 <span className="text-[#003BFF] font-bold">α = 0.05 SIGNIFIKANSI</span>
@@ -227,13 +242,46 @@ export const ResultStep: React.FC<ResultStepProps> = ({
           {/* KONTEN TAB 2: VISUALISASI GRAFIK STATISTIK (FR-13) */}
           {activeTab === "grafik" && (
             <div className="space-y-4">
+              {/* Penjelasan Fungsi & Hubungan dengan Dataset */}
+              <div className="border border-black bg-[#F0F5FF] p-4 flex items-start gap-3 shadow-[3px_3px_0px_#000000]">
+                <div className="w-8 h-8 bg-[#003BFF] text-white flex items-center justify-center shrink-0">
+                  <PieChart className="w-4 h-4 text-white" />
+                </div>
+                <div className="space-y-1">
+                  <div className="font-mono-tech text-xs font-bold text-black uppercase">
+                    UNTUK APA VISUALISASI GRAFIK INI & BAGAIMANA HUBUNGANNYA DENGAN DATASET ANDA?
+                  </div>
+                  <p className="font-sans text-xs text-black/80 leading-relaxed">
+                    Grafik ini memetakan seluruh baris data mentah yang Anda masukkan ke dalam bentuk visual grafis (seperti <em>Histogram Distribusi Frekuensi</em> atau <em>Scatter Plot Sebaran</em>). 
+                    <strong> Hubungannya dengan hasil analisis:</strong> Visualisasi memudahkan mata Anda melihat pola sebaran data dalam sekejap—misalnya apakah sebagian besar nilai berkumpul di sekitar rata-rata (membentuk lonceng normal), apakah ada nilai ekstrem yang menyendiri (outlier), atau ke mana arah tren hubungan data—sehingga jauh lebih mudah dipresentasikan dibanding hanya melihat deretan angka.
+                  </p>
+                </div>
+              </div>
+
               <ChartVisualization visualisasi={analysis.visualisasi} />
             </div>
           )}
 
           {/* KONTEN TAB 3: NARASI DUA BAHASA (FR-11, FR-12) */}
           {activeTab === "narasi" && (
-            <div className="border border-black bg-white shadow-[4px_4px_0px_#000000]">
+            <div className="space-y-4">
+              {/* Penjelasan Fungsi & Hubungan dengan Dataset */}
+              <div className="border border-black bg-[#FFFBEB] p-4 flex items-start gap-3 shadow-[3px_3px_0px_#000000]">
+                <div className="w-8 h-8 bg-[#EBEB00] border border-black text-black flex items-center justify-center shrink-0">
+                  <BookOpen className="w-4 h-4 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <div className="font-mono-tech text-xs font-bold text-black uppercase">
+                    UNTUK APA NARASI AKADEMIS INI & BAGAIMANA HUBUNGANNYA DENGAN HASIL ANALISIS?
+                  </div>
+                  <p className="font-sans text-xs text-black/80 leading-relaxed">
+                    Narasi akademis ini bertugas <strong>menerjemahkan angka-angka statistik kalkulasi menjadi tulisan ilmiah formal</strong> berstandar skripsi, tesis, atau publikasi jurnal.
+                    <strong> Hubungannya dengan dataset:</strong> AI membaca angka pasti pada Tab 01 dan merangkainya menjadi penjelasan ilmiah yang mengalir (mulai dari ringkasan eksekutif, sintesis sebaran, hingga wawasan kritis) dengan <em>guardrail numerik ketat</em> agar 100% konsisten dengan data asli Anda tanpa halusinasi angka. Anda bisa langsung menyalin atau mengutipnya ke laporan penelitian Anda.
+                  </p>
+                </div>
+              </div>
+
+              <div className="border border-black bg-white shadow-[4px_4px_0px_#000000]">
               {/* Header Tab Bahasa & Tombol Buat Ulang */}
               <div className="bg-[#EFEFEF] border-b border-black p-4 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
@@ -353,11 +401,28 @@ export const ResultStep: React.FC<ResultStepProps> = ({
                 </span>
               </div>
             </div>
+            </div>
           )}
 
           {/* KONTEN TAB 4: CONTOH KASUS (FR-14) */}
           {activeTab === "kasus" && hasCaseStudy && (
             <div className="space-y-4">
+              {/* Penjelasan Fungsi & Hubungan dengan Dataset */}
+              <div className="border border-black bg-[#F3FAF7] p-4 flex items-start gap-3 shadow-[3px_3px_0px_#000000]">
+                <div className="w-8 h-8 bg-[#00D084] border border-black text-black flex items-center justify-center shrink-0">
+                  <HelpCircle className="w-4 h-4 text-black" />
+                </div>
+                <div className="space-y-1">
+                  <div className="font-mono-tech text-xs font-bold text-black uppercase">
+                    UNTUK APA CONTOH KASUS INI & BAGAIMANA HUBUNGANNYA DENGAN HASIL ANALISIS?
+                  </div>
+                  <p className="font-sans text-xs text-black/80 leading-relaxed">
+                    Bagian ini menjembatani angka statistik kalkulasi teknis yang kaku dengan <strong>situasi nyata di kehidupan sehari-hari</strong> (seperti sekolah, perkantoran, atau bisnis).
+                    <strong> Hubungannya dengan hasil analisis:</strong> Membantu Anda maupun pembaca awam memahami makna dan dampak praktis dari data Anda—misalnya apa dampak nyata dari nilai rata-rata tersebut terhadap performa siswa atau keputusan praktis yang perlu diambil, disajikan dalam bentuk cerita analogi yang mudah dipahami tanpa perlu pusing dengan rumus rumit.
+                  </p>
+                </div>
+              </div>
+
               <CaseStudyPanel contohKasus={analysis.contoh_kasus} />
             </div>
           )}

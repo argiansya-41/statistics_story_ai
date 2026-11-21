@@ -235,28 +235,28 @@ export const ConfigStep: React.FC<ConfigStepProps> = ({
       label: "Statistik Deskriptif",
       icon: BarChart2,
       color: "#003BFF",
-      desc: "Mean, median, modus, SD, min, max (min. 2 observasi)",
+      desc: "Melihat rangkuman umum data: rata-rata, titik tengah, sebaran, & nilai min-max",
     },
     {
       type: "uji_t",
       label: "Uji t Dua Kelompok",
       icon: GitCompare,
       color: "#FF2E2E",
-      desc: "Rumus Welch t-test (tepat 2 kelompok, min. 2 per grup)",
+      desc: "Mencari tahu apakah nilai antara 2 kelompok berbeda nyata atau hanya kebetulan",
     },
     {
       type: "korelasi",
       label: "Korelasi Pearson",
       icon: GitFork,
       color: "#EBEB00",
-      desc: "Koefisien r linear X vs Y (min. 3 pasang data)",
+      desc: "Mengetahui apakah 2 variabel angka saling berhubungan erat dan ke mana arahnya",
     },
     {
       type: "regresi",
       label: "Regresi Sederhana",
       icon: TrendingUp,
       color: "#003BFF",
-      desc: "Model prediksi Y = a + bX, R² (min. 3 pasang data)",
+      desc: "Membuat rumus prediksi nilai variabel Y berdasarkan pengaruh variabel X",
     },
   ];
 

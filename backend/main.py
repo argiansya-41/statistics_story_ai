@@ -6,6 +6,7 @@ import io
 import json
 import math
 import re
+import copy
 import base64
 from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
@@ -27,6 +28,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import (
     DeclarativeBase, Mapped, Session, mapped_column, sessionmaker,
 )
+from sqlalchemy.orm.attributes import flag_modified
 
 
 ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
@@ -336,18 +338,19 @@ def make_contoh_kasus(result: dict, lang: str = "id") -> list[str]:
     prompt = f"""
 Kamu adalah asisten edukasi statistik untuk Statistics Story AI.
 
-Buat 2 sampai 3 contoh kasus atau analogi dunia nyata
-yang relevan dengan hasil analisis statistik berikut.
+Buat 2 sampai 3 contoh kasus atau analogi dunia nyata yang SANGAT MUDAH DIPAHAMI mahasiswa/pemula.
+Analogi harus menggambarkan hasil statistik berikut ke situasi nyata sehari-hari (misalnya: waktu belajar vs nilai, latihan olahraga vs kebugaran, biaya iklan vs penjualan, dll).
 
-Ketentuan:
-1. Gunakan bahasa yang mudah dipahami mahasiswa.
-2. Gunakan {language}.
-3. Sesuaikan analogi dengan jenis analisis dan variabel.
-4. Jangan mengubah atau mengarang nilai statistik.
-5. Korelasi tidak membuktikan sebab-akibat.
-6. Prediksi regresi bukan jaminan.
-7. Kembalikan hanya JSON array berisi string.
-8. Jangan gunakan Markdown atau blok kode.
+ATURAN PENTING:
+1. Gunakan bahasa santai, sederhana, dan ramah pemula ({language}).
+2. JANGAN membuat satu paragraf panjang yang bertumpuk!
+3. Format setiap contoh kasus secara terstruktur dan ringkas:
+   - Kalimat 1: Skenario analogi nyata (misal: "Ibarat memprediksi nilai ujian berdasarkan jam belajar per minggu...")
+   - Kalimat 2-3: Arti angka pentingnya secara sederhana (misal: "Setiap tambah 1 jam belajar, nilai diperkirakan naik 0.79 poin...")
+   - Kalimat 4: Kesimpulan praktis (misal: "Makin rajin belajar, nilai cenderung makin tinggi, meski ada faktor lain seperti kesehatan dan istirahat.")
+4. Jangan mengubah atau mengarang angka statistik dari data.
+5. Korelasi dan regresi tidak membuktikan sebab-akibat mutlak.
+6. Kembalikan HANYA JSON array berisi string (tanpa Markdown ```json```).
 
 Hasil analisis:
 {json.dumps(result, ensure_ascii=False, indent=2)}
@@ -376,7 +379,6 @@ Hasil analisis:
         raise ValueError("Format contoh kasus tidak valid.")
 
     except Exception as exc:
-        # Jangan menyamarkan kegagalan AI dengan contoh template.
         print(f"AI case study error (tanpa fallback template): {exc}")
         return []
 
@@ -1072,6 +1074,8 @@ def format_hasil_frontend(result: dict, kind: str | None) -> dict:
             "r_squared": clean_display_num(result.get("r_squared"), 4),
             "p_value": clean_display_num(result.get("p_value"), 4),
             "persamaan": result.get("persamaan"),
+            "r_value": clean_display_num(result.get("r_value"), 4),
+            "standar_error": clean_display_num(result.get("standar_error"), 4),
         }
 
     return result
@@ -1351,14 +1355,16 @@ def detail_analisis_frontend(item: Analysis, db: Session | None = None) -> dict:
                     examples = make_contoh_kasus_template(raw, "id")
                 if examples:
                     raw["contoh_kasus"] = examples
-                    item.hasil_json = raw
+                    item.hasil_json = copy.deepcopy(raw)
+                    flag_modified(item, "hasil_json")
                     changed = True
             except Exception as exc:
                 print(f"Contoh kasus gagal untuk analisis {item.id_analisis}: {exc}")
                 examples = make_contoh_kasus_template(raw, "id")
                 if examples:
                     raw["contoh_kasus"] = examples
-                    item.hasil_json = raw
+                    item.hasil_json = copy.deepcopy(raw)
+                    flag_modified(item, "hasil_json")
                     changed = True
 
     narasi_id = item.narasi_id
@@ -2418,7 +2424,18 @@ def run_analysis(
 
     try:
         result = calculate_analysis(item)
-        item.hasil_json = result
+        # Hasilkan contoh kasus & analogi sekali saat run agar langsung tersimpan di hasil_json
+        try:
+            ex = make_contoh_kasus(result, "id")
+            if not ex:
+                ex = make_contoh_kasus_template(result, "id")
+            result["contoh_kasus"] = ex
+        except Exception as ex_err:
+            print(f"Generate contoh kasus saat run gagal: {ex_err}")
+            result["contoh_kasus"] = make_contoh_kasus_template(result, "id")
+
+        item.hasil_json = copy.deepcopy(result)
+        flag_modified(item, "hasil_json")
         item.status = "selesai"
         db.commit()
         db.refresh(item)
