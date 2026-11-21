@@ -258,7 +258,7 @@ def extract_table_from_image(image_bytes: bytes, mime_type: str = "image/png") -
     # 2. Coba Groq Vision jika Gemini belum menghasilkan teks
     if not raw_text and q_client:
         b64_img = base64.b64encode(image_bytes).decode("utf-8")
-        vision_models = ["meta-llama/llama-4-scout-vision", "llama-3.2-11b-vision-preview", "llama-3.2-90b-vision-preview"]
+        vision_models = ["qwen/qwen3.8-27b"]
         for vm in vision_models:
             try:
                 resp = q_client.chat.completions.create(
